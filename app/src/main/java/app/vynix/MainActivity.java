@@ -41,9 +41,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
-    private static final int BG = Color.rgb(8, 8, 13), PANEL = Color.rgb(20, 19, 29), PANEL2 = Color.rgb(29, 27, 41);
+    private static final int BG = Color.rgb(23, 15, 24), PANEL = Color.rgb(43, 34, 46), PANEL2 = Color.rgb(52, 42, 55);
     private int GOLD = Color.rgb(184, 156, 255);
-    private static final int TEXT = Color.rgb(245, 243, 250), MUTED = Color.rgb(157, 153, 171);
+    private static final int TEXT = Color.rgb(246, 238, 248), MUTED = Color.rgb(174, 158, 178);
     private final List<Track> tracks = new ArrayList<>();
     private ExoPlayer player;
     private LinearLayout root, content, mini;
@@ -125,13 +125,13 @@ public class MainActivity extends AppCompatActivity {
         ScrollView scroller = new ScrollView(this); scroller.setFillViewport(true);
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(18), dp(6), dp(18), dp(18));
         scroller.addView(content); root.addView(scroller, new LinearLayout.LayoutParams(-1, 0, 1));
-        mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE191722, 24, 0x55B89CFF, 1));
+        mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE806A86, 38, 0x66E0B9F5, 1));
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); root.addView(mini, mp);
         TextView logo = label("♫", 25, GOLD, true); logo.setGravity(Gravity.CENTER); logo.setBackground(round(BG, 14, 0, 0)); mini.addView(logo, new LinearLayout.LayoutParams(dp(44), dp(44)));
         miniTitle = label("Выбери свою музыку", 13, TEXT, true); miniTitle.setSingleLine(true); miniTitle.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE); miniTitle.setMarqueeRepeatLimit(-1); LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(dp(10),0,0,0); info.addView(miniTitle); TextView sub=label("VYNIX • локальная библиотека",10,MUTED,false); info.addView(sub); mini.addView(info,new LinearLayout.LayoutParams(0,-2,1));
         playButton=label("▶",22,GOLD,true); playButton.setGravity(Gravity.CENTER); mini.addView(playButton,new LinearLayout.LayoutParams(dp(46),dp(46)));
-        playButton.setOnClickListener(v -> togglePlayback()); mini.setOnClickListener(v -> showPlayer()); mini.setElevation(dp(5));
-        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5),dp(4),dp(5),dp(4)); nav.setBackground(round(0xF0191822, 28, 0x22B89CFF, 1));
+        playButton.setOnClickListener(v -> togglePlayback()); mini.setOnClickListener(v -> showPlayer()); mini.setElevation(dp(8));
+        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5),dp(4),dp(5),dp(4)); nav.setBackground(round(0xF02B242F, 34, 0x22E0B9F5, 1));
         LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(66)); np.setMargins(dp(12),0,dp(12),dp(12)); root.addView(nav,np);
         String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"●","Профиль"}};
         for (String[] t:tabs) {
