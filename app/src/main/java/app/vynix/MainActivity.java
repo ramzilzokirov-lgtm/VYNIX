@@ -83,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
                 if (!exists) tracks.add(new Track(uri, name));
             }
             if (currentIndex < 0 && !tracks.isEmpty()) currentIndex = 0;
-            render(); syncLibrary(); Toast.makeText(this, "Добавлено: " + uris.size(), Toast.LENGTH_SHORT).show();
+            saveLocalTracks(); render(); syncLibrary(); Toast.makeText(this, "Добавлено: " + uris.size(), Toast.LENGTH_SHORT).show();
         });
         android.content.SharedPreferences accountPrefs = getSharedPreferences("vynix_account", MODE_PRIVATE);
         accountId = accountPrefs.getString("account_id", null);
@@ -92,6 +92,7 @@ public class MainActivity extends AppCompatActivity {
             accountPrefs.edit().putString("account_id", accountId).apply();
         }
         accountName = accountPrefs.getString("display_name", "VYNIX Listener");
+        loadLocalTracks();
 
         buildShell();
         render();
@@ -370,6 +371,38 @@ public class MainActivity extends AppCompatActivity {
     private void saveAccountName(String name){
         apiExecutor.execute(()->{try{JSONObject body=new JSONObject();body.put("display_name",name);apiRequest("/v1/profile/"+accountId,"PUT",body);runOnUiThread(()->{accountStatus="Синхронизирован";if("Профиль".equals(activeTab))render();});}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось синхронизировать профиль. Проверь подключение сервера.",Toast.LENGTH_LONG).show());}});
     }
+    private void loadLocalTracks() {
+        android.content.SharedPreferences prefs=getSharedPreferences("vynix_library",MODE_PRIVATE);
+        String raw=prefs.getString("tracks","[]");
+        try {
+            JSONArray saved=new JSONArray(raw);
+            for(int i=0;i<saved.length();i++) {
+                JSONObject item=saved.optJSONObject(i);
+                if(item==null)continue;
+                Uri uri=Uri.parse(item.optString("uri",""));
+                String title=item.optString("title","Без названия");
+                if(uri.toString().isEmpty())continue;
+                try {
+                    getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch(Exception ignored) {}
+                tracks.add(new Track(uri,title));
+            }
+            currentIndex=tracks.isEmpty()?-1:0;
+        } catch(Exception ignored) {
+            prefs.edit().putString("tracks","[]").apply();
+        }
+    }
+
+    private void saveLocalTracks() {
+        JSONArray saved=new JSONArray();
+        for(Track track:tracks) {
+            JSONObject item=new JSONObject();
+            try { item.put("uri",track.uri.toString()); item.put("title",track.title); saved.put(item); }
+            catch(Exception ignored) {}
+        }
+        getSharedPreferences("vynix_library",MODE_PRIVATE).edit().putString("tracks",saved.toString()).apply();
+    }
+
     private void syncLibrary(){
         apiExecutor.execute(()->{try{JSONArray items=new JSONArray();for(Track t:tracks){JSONObject item=new JSONObject();item.put("item_id",t.uri.toString());item.put("title",t.title);item.put("artist","");item.put("source","local");item.put("favorite",false);items.put(item);}JSONObject body=new JSONObject();body.put("items",items);apiRequest("/v1/library/"+accountId,"PUT",body);}catch(Exception ignored){}});
     }
