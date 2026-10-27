@@ -218,7 +218,19 @@ public class MainActivity extends AppCompatActivity {
         TextView note=label("Deezer и Apple Music показывают результаты здесь. Остальные сервисы открываются отдельно.",10,MUTED,false);note.setPadding(dp(3),dp(12),dp(3),0);sheet.addView(note);
         dialog.setContentView(sheet);
         dialog.show();
-        if(dialog.getWindow()!=null){android.view.Window w=dialog.getWindow();w.setBackgroundDrawableResource(android.R.color.transparent);w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);android.view.WindowManager.LayoutParams a=w.getAttributes();a.dimAmount=.62f;w.setAttributes(a);w.setLayout(-1,Math.min(getResources().getDisplayMetrics().heightPixels-dp(90),dp(610)));w.setGravity(Gravity.BOTTOM);}
+        if(dialog.getWindow()!=null){
+            android.view.Window w=dialog.getWindow();
+            w.setBackgroundDrawableResource(android.R.color.transparent);
+            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            android.view.WindowManager.LayoutParams a=w.getAttributes();a.dimAmount=.62f;
+            if(android.os.Build.VERSION.SDK_INT>=31){
+                a.setBlurBehindRadius(dp(28));
+                a.flags|=android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+            }
+            w.setAttributes(a);
+            w.setLayout(-1,Math.min(getResources().getDisplayMetrics().heightPixels-dp(90),dp(610)));
+            w.setGravity(Gravity.BOTTOM);
+        }
     }
 
     private void showProfileOption(String option) {
