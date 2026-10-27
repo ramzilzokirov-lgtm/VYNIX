@@ -85,8 +85,17 @@ public class MainActivity extends AppCompatActivity {
             if (currentIndex < 0 && !tracks.isEmpty()) currentIndex = 0;
             render(); syncLibrary(); Toast.makeText(this, "Добавлено: " + uris.size(), Toast.LENGTH_SHORT).show();
         });
+        android.content.SharedPreferences accountPrefs = getSharedPreferences("vynix_account", MODE_PRIVATE);
+        accountId = accountPrefs.getString("account_id", null);
+        if (accountId == null || accountId.trim().isEmpty()) {
+            accountId = UUID.randomUUID().toString();
+            accountPrefs.edit().putString("account_id", accountId).apply();
+        }
+        accountName = accountPrefs.getString("display_name", "VYNIX Listener");
+
         buildShell();
         render();
+        loadAccount();
     }
 
     private void buildShell() {
@@ -156,8 +165,14 @@ public class MainActivity extends AppCompatActivity {
             for(String[] provider:providers){TextView row=label("♫    "+provider[0]+"     ↗",14,TEXT,true);row.setPadding(dp(14),dp(13),dp(14),dp(13));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(6);content.addView(row,rp);row.setOnClickListener(v->{String q=searchInput.getText().toString().trim();if(q.isEmpty()){Toast.makeText(this,"Сначала введи название песни или исполнителя",Toast.LENGTH_SHORT).show();return;}openProvider(provider[1],q);});}
             gap(12); addText("РЕЗУЛЬТАТЫ ПОИСКА",11,GOLD,true);
             searchResults = new LinearLayout(this); searchResults.setOrientation(LinearLayout.VERTICAL); content.addView(searchResults);
-            if(!lastSearch.isEmpty()){searchInput.setText(lastSearch);addSearchMessage("Повтори поиск, чтобы обновить результаты.");}
-            else {addSearchMessage("Результаты из доступных открытых каталогов появятся здесь. Для остальных сервисов доступны быстрые переходы к их поиску.");}
+            if(!lastSearch.isEmpty()){
+                searchInput.setText(lastSearch);
+                searchInput.post(() -> {
+                    if ("Поиск".equals(activeTab) && searchResults != null) runUnifiedSearch(lastSearch);
+                });
+            } else {
+                addSearchMessage("Результаты из доступных открытых каталогов появятся здесь. Для остальных сервисов доступны быстрые переходы к их поиску.");
+            }
             if(!tracks.isEmpty()){gap(8);addText("ТВОЯ МУЗЫКА НА УСТРОЙСТВЕ",11,GOLD,true);for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);}
         } else if(activeTab.equals("Радио")) {
             addText("Радио",29,TEXT,true); gap(12); LinearLayout card=panel(true); addTextTo(card,"VYNIX RADIO",12,GOLD,true); addTextTo(card,"Твой поток. Твои правила.",22,TEXT,true); addTextTo(card,"Персональное онлайн-радио появится после подключения источников.",13,MUTED,false); content.addView(card); gap(16); empty("Радио готовится","Сейчас можно слушать локальные аудиофайлы.");
@@ -179,7 +194,7 @@ public class MainActivity extends AppCompatActivity {
             try{JSONObject deezer=getJson("https://api.deezer.com/search?q="+Uri.encode(q));JSONArray a=deezer.optJSONArray("data");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Deezer");x.put("_url",x.optString("link","https://www.deezer.com/search/"+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
             try{JSONObject itunes=getJson("https://itunes.apple.com/search?media=music&entity=song&limit=15&term="+Uri.encode(q));JSONArray a=itunes.optJSONArray("results");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Apple Music");x.put("_url",x.optString("trackViewUrl","https://music.apple.com/search?term="+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
             runOnUiThread(()->{
-                if(!"Поиск".equals(activeTab)||searchResults==null)return;searchResults.removeAllViews();
+                if(!"Поиск".equals(activeTab)||searchResults==null||!q.equals(lastSearch))return;searchResults.removeAllViews();
                 if(found.isEmpty()){addSearchMessage("Не удалось получить результаты из открытых каталогов. Проверь интернет или выбери сервис выше.");return;}
                 TextView count=label("Найдено: "+found.size()+" • Deezer и Apple Music",11,MUTED,false);count.setPadding(0,0,0,dp(8));searchResults.addView(count);
                 for(JSONObject x:found){
