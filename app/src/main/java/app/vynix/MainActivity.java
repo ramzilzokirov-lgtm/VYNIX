@@ -37,8 +37,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
-    private static final int BG = Color.rgb(8, 9, 11), PANEL = Color.rgb(24, 25, 29), PANEL2 = Color.rgb(32, 33, 38);
-    private static final int GOLD = Color.rgb(255, 205, 94), TEXT = Color.rgb(248, 247, 243), MUTED = Color.rgb(160, 162, 168);
+    private static final int BG = Color.rgb(8, 8, 13), PANEL = Color.rgb(20, 19, 29), PANEL2 = Color.rgb(29, 27, 41);
+    private static final int GOLD = Color.rgb(184, 156, 255), TEXT = Color.rgb(245, 243, 250), MUTED = Color.rgb(157, 153, 171);
     private final List<Track> tracks = new ArrayList<>();
     private ExoPlayer player;
     private LinearLayout root, content, mini;
@@ -193,19 +193,19 @@ public class MainActivity extends AppCompatActivity {
         };
         android.app.Dialog dialog=new android.app.Dialog(this);
         LinearLayout sheet=new LinearLayout(this);sheet.setOrientation(LinearLayout.VERTICAL);sheet.setPadding(dp(20),dp(10),dp(20),dp(18));
-        sheet.setBackground(round(0xF022242A,30,0x66FFFFFF,1));
+        sheet.setBackground(round(0xE8171722,30,0x33D9CCFF,1));
         View handle=new View(this);handle.setBackground(round(0x88FFFFFF,5,0,0));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(dp(42),dp(4));hp.gravity=Gravity.CENTER;hp.bottomMargin=dp(18);sheet.addView(handle,hp);
-        sheet.addView(label("Выбери источник",24,TEXT,true));
-        TextView subtitle=label("Жидкое стекло • музыкальный поиск",12,MUTED,false);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(5);sp.bottomMargin=dp(16);sheet.addView(subtitle,sp);
+        sheet.addView(label("Источник музыки",23,TEXT,true));
+        TextView subtitle=label("ВЫБЕРИ, ГДЕ ИСКАТЬ",10,MUTED,true);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(5);sp.bottomMargin=dp(16);sheet.addView(subtitle,sp);
         ScrollView scroll=new ScrollView(this);LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
         for(int i=0;i<providers.length;i++){
             final String[] provider=providers[i];
             LinearLayout tile=new LinearLayout(this);tile.setGravity(Gravity.CENTER_VERTICAL);tile.setPadding(dp(12),dp(11),dp(12),dp(11));
-            tile.setBackground(round(i<2?0xCC333038:0xAA292B32,19,i<2?0x88FFCD5E:0x44FFFFFF,1));
+            tile.setBackground(round(i<2?0xAA302A43:0x552B2938,18,i<2?0x66B89CFF:0x22FFFFFF,1));
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.bottomMargin=dp(8);list.addView(tile,tp);
-            TextView logo=label(provider[3],19,GOLD,true);logo.setGravity(Gravity.CENTER);logo.setBackground(round(0x44202020,14,0x44FFFFFF,1));tile.addView(logo,new LinearLayout.LayoutParams(dp(46),dp(46)));
+            TextView logo=label(provider[3],19,GOLD,true);logo.setGravity(Gravity.CENTER);logo.setBackground(round(0x33211D32,14,0x33D9CCFF,1));tile.addView(logo,new LinearLayout.LayoutParams(dp(46),dp(46)));
             LinearLayout details=new LinearLayout(this);details.setOrientation(LinearLayout.VERTICAL);details.setPadding(dp(12),0,dp(4),0);details.addView(label(provider[0],15,TEXT,true));details.addView(label(provider[1],10,MUTED,false));tile.addView(details,new LinearLayout.LayoutParams(0,-2,1));
-            tile.addView(label(i<2?"ВНУТРИ":"↗",10,i<2?GOLD:MUTED,true));
+            tile.addView(label(i<2?"VYNIX":"↗",9,i<2?GOLD:MUTED,true));
             tile.setOnClickListener(v->{
                 String q=searchInput==null?"":searchInput.getText().toString().trim();
                 if(q.isEmpty()){dialog.dismiss();Toast.makeText(this,"Сначала введи песню или исполнителя",Toast.LENGTH_SHORT).show();return;}
@@ -215,7 +215,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }
         sheet.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        TextView note=label("Deezer и Apple Music показывают результаты здесь. Остальные сервисы открываются отдельно.",10,MUTED,false);note.setPadding(dp(3),dp(12),dp(3),0);sheet.addView(note);
+        TextView note=label("Часть каталогов открывается внутри VYNIX. Остальные сервисы используют свой поиск.",10,MUTED,false);note.setPadding(dp(3),dp(12),dp(3),0);sheet.addView(note);
         dialog.setContentView(sheet);
         dialog.show();
         if(dialog.getWindow()!=null){
