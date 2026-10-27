@@ -181,7 +181,9 @@ public class MainActivity extends AppCompatActivity {
             for(String option:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+option+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(0xEE17161F,17,0x22B89CFF,1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);row.setOnClickListener(v->showProfileOption(option));}
         }
     }
-    private void gapInside(LinearLayout parent,int height) { View spacer=new View(this); parent.addView(spacer,new LinearLayout.LayoutParams(1,height)); }\n\n    private void showSourcePicker() {
+    private void gapInside(LinearLayout parent,int height) { View spacer=new View(this); parent.addView(spacer,new LinearLayout.LayoutParams(1,height)); }
+
+    private void showSourcePicker() {
         final String[][] providers={
             {"Deezer","Открытый каталог • поиск внутри VYNIX","https://www.deezer.com/search/","D"},
             {"Apple Music","Каталог iTunes • поиск внутри VYNIX","https://music.apple.com/search?term=","A"},
