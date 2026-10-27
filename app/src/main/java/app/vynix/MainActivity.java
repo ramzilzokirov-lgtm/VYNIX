@@ -12,6 +12,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -43,7 +44,15 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout root, content, mini;
     private TextView miniTitle, playButton;
     private String activeTab = "Главная";
-    private int currentIndex = -1;\n    private final ExecutorService apiExecutor = Executors.newSingleThreadExecutor();\n    private String accountId;\n    private String accountName = "VYNIX Listener";\n    private String accountStatus = "Подключаем аккаунт…";\n    private static final String API = "https://vynix-api.onrender.com";
+    private int currentIndex = -1;
+    private final ExecutorService apiExecutor = Executors.newSingleThreadExecutor();
+    private String accountId;
+    private String accountName = "VYNIX Listener";
+    private String accountStatus = "Подключаем аккаунт…";
+    private EditText searchInput;
+    private LinearLayout searchResults;
+    private String lastSearch = "";
+    private static final String API = "https://vynix-api.onrender.com";
     private ActivityResultLauncher<String[]> audioPicker;
 
     private static class Track {
@@ -133,9 +142,23 @@ public class MainActivity extends AppCompatActivity {
             sectionTitle("Треки","+ Добавить",this::chooseAudio);
             if(tracks.isEmpty())empty("Библиотека пуста","Выбери музыку на устройстве."); else for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);
         } else if(activeTab.equals("Поиск")) {
-            addText("Поиск",29,TEXT,true); TextView hint=label("⌕   Поиск в локальной библиотеке",14,MUTED,false); hint.setPadding(dp(15),dp(15),dp(15),dp(15)); hint.setBackground(round(PANEL,18,0,0)); content.addView(hint); gap(16);
-            for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);
-            if(tracks.isEmpty())empty("Нечего искать","Добавь музыку — поиск по библиотеке появится здесь.");
+            addText("Поиск музыки",29,TEXT,true);
+            addText("Один запрос — несколько музыкальных каталогов",13,MUTED,false); gap(12);
+            LinearLayout searchBox = new LinearLayout(this); searchBox.setGravity(Gravity.CENTER_VERTICAL); searchBox.setPadding(dp(12),dp(4),dp(5),dp(4)); searchBox.setBackground(round(PANEL,20,0,0));
+            searchInput = new EditText(this); searchInput.setSingleLine(true); searchInput.setTextColor(TEXT); searchInput.setHintTextColor(MUTED); searchInput.setTextSize(15); searchInput.setHint("Песня, исполнитель, альбом"); searchInput.setBackgroundColor(Color.TRANSPARENT); searchInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+            searchBox.addView(searchInput,new LinearLayout.LayoutParams(0,dp(48),1));
+            TextView go=label("НАЙТИ",12,BG,true); go.setGravity(Gravity.CENTER); go.setPadding(dp(14),dp(12),dp(14),dp(12)); go.setBackground(round(GOLD,15,0,0)); searchBox.addView(go); content.addView(searchBox);
+            go.setOnClickListener(v->runUnifiedSearch(searchInput.getText().toString().trim()));
+            searchInput.setOnEditorActionListener((v,action,event)->{if(action==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH){runUnifiedSearch(searchInput.getText().toString().trim());return true;}return false;});
+            gap(12);
+            addText("ИСТОЧНИКИ",11,GOLD,true);
+            String[][] providers={{"Spotify","https://open.spotify.com/search/"},{"SoundCloud","https://soundcloud.com/search?q="},{"VK Музыка","https://vk.com/audio?q="},{"YouTube Music","https://music.youtube.com/search?q="},{"Apple Music","https://music.apple.com/search?term="},{"Deezer","https://www.deezer.com/search/"},{"Яндекс Музыка","https://music.yandex.ru/search?text="}};
+            for(String[] provider:providers){TextView row=label("♫    "+provider[0]+"     ↗",14,TEXT,true);row.setPadding(dp(14),dp(13),dp(14),dp(13));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(6);content.addView(row,rp);row.setOnClickListener(v->{String q=searchInput.getText().toString().trim();if(q.isEmpty()){Toast.makeText(this,"Сначала введи название песни или исполнителя",Toast.LENGTH_SHORT).show();return;}openProvider(provider[1],q);});}
+            gap(12); addText("РЕЗУЛЬТАТЫ ПОИСКА",11,GOLD,true);
+            searchResults = new LinearLayout(this); searchResults.setOrientation(LinearLayout.VERTICAL); content.addView(searchResults);
+            if(!lastSearch.isEmpty()){searchInput.setText(lastSearch);addSearchMessage("Повтори поиск, чтобы обновить результаты.");}
+            else {addSearchMessage("Результаты из доступных открытых каталогов появятся здесь. Для остальных сервисов доступны быстрые переходы к их поиску.");}
+            if(!tracks.isEmpty()){gap(8);addText("ТВОЯ МУЗЫКА НА УСТРОЙСТВЕ",11,GOLD,true);for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);}
         } else if(activeTab.equals("Радио")) {
             addText("Радио",29,TEXT,true); gap(12); LinearLayout card=panel(true); addTextTo(card,"VYNIX RADIO",12,GOLD,true); addTextTo(card,"Твой поток. Твои правила.",22,TEXT,true); addTextTo(card,"Персональное онлайн-радио появится после подключения источников.",13,MUTED,false); content.addView(card); gap(16); empty("Радио готовится","Сейчас можно слушать локальные аудиофайлы.");
         } else {
@@ -144,6 +167,37 @@ public class MainActivity extends AppCompatActivity {
             content.addView(profile); gap(12);
             for(String s:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+s+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);}
         }
+    }
+    private void openProvider(String base,String query){try{Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse(base+Uri.encode(query)));startActivity(i);}catch(Exception e){Toast.makeText(this,"Не удалось открыть источник",Toast.LENGTH_SHORT).show();}}
+    private void addSearchMessage(String message){if(searchResults==null)return;TextView t=label(message,13,MUTED,false);t.setPadding(dp(14),dp(14),dp(14),dp(14));t.setBackground(round(PANEL,16,0,0));searchResults.addView(t);}
+    private void runUnifiedSearch(String query){
+        if(query==null||query.trim().isEmpty()){Toast.makeText(this,"Введи название песни или исполнителя",Toast.LENGTH_SHORT).show();return;}
+        lastSearch=query.trim();if(searchResults!=null){searchResults.removeAllViews();addSearchMessage("Ищем «"+lastSearch+"» в открытых музыкальных каталогах…");}
+        final String q=lastSearch;
+        apiExecutor.execute(()->{
+            List<JSONObject> found=new ArrayList<>();List<String> sources=new ArrayList<>();
+            try{JSONObject deezer=getJson("https://api.deezer.com/search?q="+Uri.encode(q));JSONArray a=deezer.optJSONArray("data");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Deezer");x.put("_url",x.optString("link","https://www.deezer.com/search/"+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
+            try{JSONObject itunes=getJson("https://itunes.apple.com/search?media=music&entity=song&limit=15&term="+Uri.encode(q));JSONArray a=itunes.optJSONArray("results");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Apple Music");x.put("_url",x.optString("trackViewUrl","https://music.apple.com/search?term="+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
+            runOnUiThread(()->{
+                if(!"Поиск".equals(activeTab)||searchResults==null)return;searchResults.removeAllViews();
+                if(found.isEmpty()){addSearchMessage("Не удалось получить результаты из открытых каталогов. Проверь интернет или выбери сервис выше.");return;}
+                TextView count=label("Найдено: "+found.size()+" • Deezer и Apple Music",11,MUTED,false);count.setPadding(0,0,0,dp(8));searchResults.addView(count);
+                for(JSONObject x:found){
+                    boolean deezer="Deezer".equals(x.optString("_source"));
+                    String title=deezer?x.optString("title","Без названия"):x.optString("trackName","Без названия");
+                    String artist=deezer?x.optJSONObject("artist")!=null?x.optJSONObject("artist").optString("name",""): "":x.optString("artistName","");
+                    String album=deezer?x.optJSONObject("album")!=null?x.optJSONObject("album").optString("title",""): "":x.optString("collectionName","");
+                    String url=x.optString("_url","");
+                    LinearLayout row=new LinearLayout(MainActivity.this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(10),dp(10),dp(10),dp(10));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(7);searchResults.addView(row,rp);
+                    TextView icon=label("♫",23,GOLD,true);icon.setGravity(Gravity.CENTER);row.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(42)));
+                    LinearLayout info=new LinearLayout(MainActivity.this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(10),0,dp(6),0);info.addView(label(title,14,TEXT,true));info.addView(label(artist+(album.isEmpty()?"":" • "+album),11,MUTED,false));info.addView(label(x.optString("_source"),10,GOLD,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(label("↗",19,GOLD,true));row.setOnClickListener(v->openProvider(url.isEmpty()?"https://www.deezer.com/search/":url,""));
+                }
+            });
+        });
+    }
+    private JSONObject getJson(String address)throws Exception{
+        HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();c.setRequestMethod("GET");c.setConnectTimeout(9000);c.setReadTimeout(12000);c.setRequestProperty("Accept","application/json");
+        int code=c.getResponseCode();java.io.InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();StringBuilder b=new StringBuilder();if(in!=null)try(BufferedReader r=new BufferedReader(new InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=r.readLine())!=null)b.append(line);}c.disconnect();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);return new JSONObject(b.toString());
     }
     private void sectionTitle(String title,String action,Runnable r){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);TextView a=label(title,19,TEXT,true);row.addView(a,new LinearLayout.LayoutParams(0,-2,1));TextView b=label(action,12,GOLD,true);row.addView(b);b.setOnClickListener(v->r.run());content.addView(row);gap(10);}
     private void trackRow(Track t,int index){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(10),dp(9),dp(8),dp(9));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(7);content.addView(row,p);TextView art=label("♫",22,GOLD,true);art.setGravity(Gravity.CENTER);art.setBackground(round(0xFF27251F,13,0,0));row.addView(art,new LinearLayout.LayoutParams(dp(45),dp(45)));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(11),0,0,0);info.addView(label(t.title,14,TEXT,true));info.addView(label("Локальный файл",11,MUTED,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(label("⋮",22,MUTED,false));row.setOnClickListener(v->playTrack(index));}
@@ -183,5 +237,6 @@ public class MainActivity extends AppCompatActivity {
     private void syncLibrary(){
         apiExecutor.execute(()->{try{JSONArray items=new JSONArray();for(Track t:tracks){JSONObject item=new JSONObject();item.put("item_id",t.uri.toString());item.put("title",t.title);item.put("artist","");item.put("source","local");item.put("favorite",false);items.put(item);}JSONObject body=new JSONObject();body.put("items",items);apiRequest("/v1/library/"+accountId,"PUT",body);}catch(Exception ignored){}});
     }
-\n    @Override protected void onDestroy(){apiExecutor.shutdownNow();if(player!=null)player.release();super.onDestroy();}
+
+    @Override protected void onDestroy(){apiExecutor.shutdownNow();if(player!=null)player.release();super.onDestroy();}
 }
