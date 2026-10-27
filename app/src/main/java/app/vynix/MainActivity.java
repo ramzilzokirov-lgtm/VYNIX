@@ -113,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void buildShell() {
-        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(BG);
+        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(BG); root.setClipToPadding(false);
         setContentView(root);
         FrameLayout top = new FrameLayout(this);
         TextView brand = label("VYNIX", 17, TEXT, true); brand.setLetterSpacing(.22f);
@@ -121,9 +121,9 @@ public class MainActivity extends AppCompatActivity {
         bp.leftMargin = dp(22); brand.setGravity(Gravity.CENTER_VERTICAL); top.addView(brand, bp);
         TextView add = label("+", 25, GOLD, false); add.setGravity(Gravity.CENTER); add.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33FFFFFF),round(0x33251F3A,17,0x33B89CFF,1),null)); add.setOnClickListener(v->{v.animate().rotation(90f).setDuration(180).withEndAction(()->v.animate().rotation(0f).setDuration(160).start()).start();chooseAudio();});
         FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP|Gravity.END); ap.rightMargin=dp(12); top.addView(add, ap); add.setOnClickListener(v -> chooseAudio());
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(58)));
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(50)));
         ScrollView scroller = new ScrollView(this); scroller.setFillViewport(true);
-        content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(18), dp(6), dp(18), dp(18));
+        content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(18), dp(2), dp(18), dp(22));
         scroller.addView(content); root.addView(scroller, new LinearLayout.LayoutParams(-1, 0, 1));
         mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE806A86, 38, 0x66E0B9F5, 1));
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); root.addView(mini, mp);
@@ -131,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
         miniTitle = label("Выбери свою музыку", 13, TEXT, true); miniTitle.setSingleLine(true); miniTitle.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE); miniTitle.setMarqueeRepeatLimit(-1); LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(dp(10),0,0,0); info.addView(miniTitle); TextView sub=label("VYNIX • локальная библиотека",10,MUTED,false); info.addView(sub); mini.addView(info,new LinearLayout.LayoutParams(0,-2,1));
         playButton=label("▶",22,GOLD,true); playButton.setGravity(Gravity.CENTER); mini.addView(playButton,new LinearLayout.LayoutParams(dp(46),dp(46)));
         playButton.setOnClickListener(v -> togglePlayback()); mini.setOnClickListener(v -> showPlayer()); mini.setElevation(dp(8));
-        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5),dp(4),dp(5),dp(4)); nav.setBackground(round(0xF02B242F, 34, 0x22E0B9F5, 1));
+        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5),dp(4),dp(5),dp(4)); nav.setBackground(round(0xF02B242F, 34, 0x22E0B9F5, 1)); nav.setElevation(dp(8));
         LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(66)); np.setMargins(dp(12),0,dp(12),dp(12)); root.addView(nav,np);
         String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"●","Профиль"}};
         for (String[] t:tabs) {
