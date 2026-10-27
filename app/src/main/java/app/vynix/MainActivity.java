@@ -155,27 +155,22 @@ public class MainActivity extends AppCompatActivity {
             if(tracks.isEmpty())empty("Библиотека пуста","Выбери музыку на устройстве."); else for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);
         } else if(activeTab.equals("Поиск")) {
             addText("Поиск музыки",29,TEXT,true);
-            addText("Один запрос — несколько музыкальных каталогов",13,MUTED,false); gap(12);
-            LinearLayout searchBox = new LinearLayout(this); searchBox.setGravity(Gravity.CENTER_VERTICAL); searchBox.setPadding(dp(12),dp(4),dp(5),dp(4)); searchBox.setBackground(round(PANEL,20,0,0));
+            addText("Выбирай источник. Ищи музыку в одном месте.",13,MUTED,false); gap(12);
+            LinearLayout searchBox = new LinearLayout(this); searchBox.setGravity(Gravity.CENTER_VERTICAL); searchBox.setPadding(dp(12),dp(4),dp(5),dp(4)); searchBox.setBackground(round(0xDD202126,22,0x66FFFFFF,1));
             searchInput = new EditText(this); searchInput.setSingleLine(true); searchInput.setTextColor(TEXT); searchInput.setHintTextColor(MUTED); searchInput.setTextSize(15); searchInput.setHint("Песня, исполнитель, альбом"); searchInput.setBackgroundColor(Color.TRANSPARENT); searchInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
             searchBox.addView(searchInput,new LinearLayout.LayoutParams(0,dp(48),1));
             TextView go=label("НАЙТИ",12,BG,true); go.setGravity(Gravity.CENTER); go.setPadding(dp(14),dp(12),dp(14),dp(12)); go.setBackground(round(GOLD,15,0,0)); searchBox.addView(go); content.addView(searchBox);
             go.setOnClickListener(v->runUnifiedSearch(searchInput.getText().toString().trim()));
             searchInput.setOnEditorActionListener((v,action,event)->{if(action==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH){runUnifiedSearch(searchInput.getText().toString().trim());return true;}return false;});
             gap(12);
-            addText("ИСТОЧНИКИ",11,GOLD,true);
-            String[][] providers={{"Spotify","https://open.spotify.com/search/"},{"SoundCloud","https://soundcloud.com/search?q="},{"VK Музыка","https://vk.com/audio?q="},{"YouTube Music","https://music.youtube.com/search?q="},{"Apple Music","https://music.apple.com/search?term="},{"Deezer","https://www.deezer.com/search/"},{"Яндекс Музыка","https://music.yandex.ru/search?text="}};
-            for(String[] provider:providers){TextView row=label("♫    "+provider[0]+"     ↗",14,TEXT,true);row.setPadding(dp(14),dp(13),dp(14),dp(13));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(6);content.addView(row,rp);row.setOnClickListener(v->{String q=searchInput.getText().toString().trim();if(q.isEmpty()){Toast.makeText(this,"Сначала введи название песни или исполнителя",Toast.LENGTH_SHORT).show();return;}openProvider(provider[1],q);});}
-            gap(12); addText("РЕЗУЛЬТАТЫ ПОИСКА",11,GOLD,true);
+            LinearLayout sourcePicker = new LinearLayout(this); sourcePicker.setGravity(Gravity.CENTER_VERTICAL); sourcePicker.setPadding(dp(14),dp(13),dp(14),dp(13)); sourcePicker.setBackground(round(0xB827292F,18,0x55FFFFFF,1));
+            TextView sourceIcon=label("◉",22,GOLD,true); sourcePicker.addView(sourceIcon); LinearLayout sourceText=new LinearLayout(this);sourceText.setOrientation(LinearLayout.VERTICAL);sourceText.setPadding(dp(10),0,0,0);sourceText.addView(label("Где искать музыку",14,TEXT,true));sourceText.addView(label("Выбрать сервис • 7 источников",11,MUTED,false));sourcePicker.addView(sourceText,new LinearLayout.LayoutParams(0,-2,1));sourcePicker.addView(label("⌄",20,GOLD,true));LinearLayout.LayoutParams sourceParams=new LinearLayout.LayoutParams(-1,-2);sourceParams.bottomMargin=dp(8);content.addView(sourcePicker,sourceParams);sourcePicker.setOnClickListener(v->showSourcePicker());
+            addText("РЕЗУЛЬТАТЫ ПОИСКА",11,GOLD,true);
             searchResults = new LinearLayout(this); searchResults.setOrientation(LinearLayout.VERTICAL); content.addView(searchResults);
             if(!lastSearch.isEmpty()){
                 searchInput.setText(lastSearch);
-                searchInput.post(() -> {
-                    if ("Поиск".equals(activeTab) && searchResults != null) runUnifiedSearch(lastSearch);
-                });
-            } else {
-                addSearchMessage("Результаты из доступных открытых каталогов появятся здесь. Для остальных сервисов доступны быстрые переходы к их поиску.");
-            }
+                searchInput.post(() -> { if ("Поиск".equals(activeTab) && searchResults != null) runUnifiedSearch(lastSearch); });
+            } else addSearchMessage("Результаты Deezer и Apple Music появятся здесь. Другие сервисы откроются отдельно.");
             if(!tracks.isEmpty()){gap(8);addText("ТВОЯ МУЗЫКА НА УСТРОЙСТВЕ",11,GOLD,true);for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);}
         } else if(activeTab.equals("Радио")) {
             addText("Радио",29,TEXT,true); gap(12); LinearLayout card=panel(true); addTextTo(card,"VYNIX RADIO",12,GOLD,true); addTextTo(card,"Твой поток. Твои правила.",22,TEXT,true); addTextTo(card,"Персональное онлайн-радио появится после подключения источников.",13,MUTED,false); content.addView(card); gap(16); empty("Радио готовится","Сейчас можно слушать локальные аудиофайлы.");
@@ -186,6 +181,46 @@ public class MainActivity extends AppCompatActivity {
             for(String option:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+option+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);row.setOnClickListener(v->showProfileOption(option));}
         }
     }
+    private void showSourcePicker() {
+        final String[][] providers={
+            {"Deezer","Открытый каталог • поиск внутри VYNIX","https://www.deezer.com/search/","D"},
+            {"Apple Music","Каталог iTunes • поиск внутри VYNIX","https://music.apple.com/search?term=","A"},
+            {"Spotify","Поиск в приложении или на сайте","https://open.spotify.com/search/","S"},
+            {"SoundCloud","Поиск независимой музыки","https://soundcloud.com/search?q=","♫"},
+            {"VK Музыка","Музыка и аудиозаписи VK","https://vk.com/audio?q=","VK"},
+            {"YouTube Music","Клипы, альбомы и музыка","https://music.youtube.com/search?q=","▶"},
+            {"Яндекс Музыка","Каталог Яндекс Музыки","https://music.yandex.ru/search?text=","Я"}
+        };
+        android.app.Dialog dialog=new android.app.Dialog(this);
+        LinearLayout sheet=new LinearLayout(this);sheet.setOrientation(LinearLayout.VERTICAL);sheet.setPadding(dp(20),dp(10),dp(20),dp(18));
+        sheet.setBackground(round(0xF022242A,30,0x66FFFFFF,1));
+        View handle=new View(this);handle.setBackground(round(0x88FFFFFF,5,0,0));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(dp(42),dp(4));hp.gravity=Gravity.CENTER;hp.bottomMargin=dp(18);sheet.addView(handle,hp);
+        sheet.addView(label("Выбери источник",24,TEXT,true));
+        TextView subtitle=label("Жидкое стекло • музыкальный поиск",12,MUTED,false);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(5);sp.bottomMargin=dp(16);sheet.addView(subtitle,sp);
+        ScrollView scroll=new ScrollView(this);LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
+        for(int i=0;i<providers.length;i++){
+            final String[] provider=providers[i];
+            LinearLayout tile=new LinearLayout(this);tile.setGravity(Gravity.CENTER_VERTICAL);tile.setPadding(dp(12),dp(11),dp(12),dp(11));
+            tile.setBackground(round(i<2?0xCC333038:0xAA292B32,19,i<2?0x88FFCD5E:0x44FFFFFF,1));
+            LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.bottomMargin=dp(8);list.addView(tile,tp);
+            TextView logo=label(provider[3],19,GOLD,true);logo.setGravity(Gravity.CENTER);logo.setBackground(round(0x44202020,14,0x44FFFFFF,1));tile.addView(logo,new LinearLayout.LayoutParams(dp(46),dp(46)));
+            LinearLayout details=new LinearLayout(this);details.setOrientation(LinearLayout.VERTICAL);details.setPadding(dp(12),0,dp(4),0);details.addView(label(provider[0],15,TEXT,true));details.addView(label(provider[1],10,MUTED,false));tile.addView(details,new LinearLayout.LayoutParams(0,-2,1));
+            tile.addView(label(i<2?"ВНУТРИ":"↗",10,i<2?GOLD:MUTED,true));
+            tile.setOnClickListener(v->{
+                String q=searchInput==null?"":searchInput.getText().toString().trim();
+                if(q.isEmpty()){dialog.dismiss();Toast.makeText(this,"Сначала введи песню или исполнителя",Toast.LENGTH_SHORT).show();return;}
+                dialog.dismiss();
+                if("Deezer".equals(provider[0])||"Apple Music".equals(provider[0]))runUnifiedSearch(q);
+                else openProvider(provider[2],q);
+            });
+        }
+        sheet.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        TextView note=label("Deezer и Apple Music показывают результаты здесь. Остальные сервисы открываются отдельно.",10,MUTED,false);note.setPadding(dp(3),dp(12),dp(3),0);sheet.addView(note);
+        dialog.setContentView(sheet);
+        dialog.show();
+        if(dialog.getWindow()!=null){android.view.Window w=dialog.getWindow();w.setBackgroundDrawableResource(android.R.color.transparent);w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);android.view.WindowManager.LayoutParams a=w.getAttributes();a.dimAmount=.62f;w.setAttributes(a);w.setLayout(-1,Math.min(getResources().getDisplayMetrics().heightPixels-dp(90),dp(610)));w.setGravity(Gravity.BOTTOM);}
+    }
+
     private void showProfileOption(String option) {
         android.content.SharedPreferences prefs=getSharedPreferences("vynix_settings",MODE_PRIVATE);
         if ("О приложении".equals(option)) {
