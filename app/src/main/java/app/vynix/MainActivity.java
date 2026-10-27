@@ -102,23 +102,23 @@ public class MainActivity extends AppCompatActivity {
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(BG);
         setContentView(root);
         FrameLayout top = new FrameLayout(this);
-        TextView brand = label("VYNIX", 15, GOLD, true); brand.setLetterSpacing(.32f);
-        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-2, dp(52), Gravity.TOP|Gravity.START);
+        TextView brand = label("VYNIX", 17, TEXT, true); brand.setLetterSpacing(.22f);
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-2, dp(58), Gravity.TOP|Gravity.START);
         bp.leftMargin = dp(22); brand.setGravity(Gravity.CENTER_VERTICAL); top.addView(brand, bp);
-        TextView add = label("+", 28, GOLD, false); add.setGravity(Gravity.CENTER);
-        FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP|Gravity.END); ap.rightMargin=dp(12); top.addView(add, ap); add.setOnClickListener(v -> chooseAudio());
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(52)));
+        TextView add = label("+", 25, GOLD, false); add.setGravity(Gravity.CENTER); add.setBackground(round(0x33251F3A,17,0x33B89CFF,1));
+        FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP|Gravity.END); ap.rightMargin=dp(12); top.addView(add, ap); add.setOnClickListener(v -> chooseAudio());
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(58)));
         ScrollView scroller = new ScrollView(this); scroller.setFillViewport(true);
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(18), dp(6), dp(18), dp(18));
         scroller.addView(content); root.addView(scroller, new LinearLayout.LayoutParams(-1, 0, 1));
-        mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(PANEL2, 24, GOLD, 1));
+        mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE191722, 24, 0x55B89CFF, 1));
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); root.addView(mini, mp);
         TextView logo = label("♫", 25, GOLD, true); logo.setGravity(Gravity.CENTER); logo.setBackground(round(BG, 14, 0, 0)); mini.addView(logo, new LinearLayout.LayoutParams(dp(44), dp(44)));
         miniTitle = label("Выбери свою музыку", 13, TEXT, true); LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(dp(10),0,0,0); info.addView(miniTitle); TextView sub=label("VYNIX • локальная библиотека",10,MUTED,false); info.addView(sub); mini.addView(info,new LinearLayout.LayoutParams(0,-2,1));
         playButton=label("▶",22,GOLD,true); playButton.setGravity(Gravity.CENTER); mini.addView(playButton,new LinearLayout.LayoutParams(dp(46),dp(46)));
-        playButton.setOnClickListener(v -> togglePlayback()); mini.setOnClickListener(v -> showPlayer());
-        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5),dp(4),dp(5),dp(4)); nav.setBackground(round(PANEL, 30, 0, 0));
-        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(62)); np.setMargins(dp(12),0,dp(12),dp(12)); root.addView(nav,np);
+        playButton.setOnClickListener(v -> togglePlayback()); mini.setOnClickListener(v -> showPlayer()); mini.setElevation(dp(5));
+        LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5),dp(4),dp(5),dp(4)); nav.setBackground(round(0xF0191822, 28, 0x22B89CFF, 1));
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(66)); np.setMargins(dp(12),0,dp(12),dp(12)); root.addView(nav,np);
         String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"◉","Радио"},{"●","Профиль"}};
         for (String[] t:tabs) {
             LinearLayout item=new LinearLayout(this); item.setOrientation(LinearLayout.VERTICAL); item.setGravity(Gravity.CENTER); item.setPadding(0,dp(5),0,dp(3));
@@ -133,7 +133,7 @@ public class MainActivity extends AppCompatActivity {
     private void buildNavSelection() {
         LinearLayout nav=navBar();
         String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"◉","Радио"},{"●","Профиль"}};
-        for(int i=0;i<nav.getChildCount();i++){LinearLayout item=(LinearLayout)nav.getChildAt(i); boolean sel=tabs[i][1].equals(activeTab); ((TextView)item.getChildAt(0)).setTextColor(sel?GOLD:MUTED); ((TextView)item.getChildAt(1)).setTextColor(sel?GOLD:MUTED); item.setBackground(sel?round(0x332A2416,20,0,0):null);}
+        for(int i=0;i<nav.getChildCount();i++){LinearLayout item=(LinearLayout)nav.getChildAt(i); boolean sel=tabs[i][1].equals(activeTab); ((TextView)item.getChildAt(0)).setTextColor(sel?GOLD:MUTED); ((TextView)item.getChildAt(1)).setTextColor(sel?GOLD:MUTED); item.setBackground(sel?round(0x332F2944,19,0x33B89CFF,1):null);}
     }
 
     private void render() {
@@ -142,30 +142,30 @@ public class MainActivity extends AppCompatActivity {
         searchInput = null;
         content.removeAllViews();
         if(activeTab.equals("Главная")) {
-            addText("Твоя волна",29,TEXT,true); addText("Музыка под твоё настроение",14,MUTED,false); gap(18);
-            LinearLayout hero=panel(true); addTextTo(hero,"VYNIX RADIO  /  01",11,GOLD,true); addTextTo(hero,"Слушай своё.",26,TEXT,true); addTextTo(hero,tracks.isEmpty()?"Добавь музыку с устройства":tracks.size()+" треков в твоей библиотеке",13,MUTED,false);
-            TextView action=button(tracks.isEmpty()?"Добавить музыку":"Продолжить слушать"); hero.addView(action); action.setOnClickListener(v->{if(tracks.isEmpty())chooseAudio();else showPlayer();}); content.addView(hero); gap(22);
+            addText("Твоя волна",30,TEXT,true); addText("ТВОЙ ЗВУК. ТВОЁ ПРОСТРАНСТВО.",10,GOLD,true); gap(18);
+            LinearLayout hero=panel(true); hero.setPadding(dp(20),dp(22),dp(20),dp(20)); hero.setBackground(round(0xFF211C31,27,0x66B89CFF,1)); addTextTo(hero,"V Y N I X     /     YOUR SOUND",10,GOLD,true); gapInside(hero,dp(9)); addTextTo(hero,"Музыка.\nБез лишнего.",30,TEXT,true); gapInside(hero,dp(8)); addTextTo(hero,tracks.isEmpty()?"Собери свою библиотеку и включай любимое.":tracks.size()+" треков уже в твоей библиотеке",13,MUTED,false);
+            TextView action=button(tracks.isEmpty()?"＋   Добавить музыку":"▶   Продолжить слушать"); hero.addView(action); action.setOnClickListener(v->{if(tracks.isEmpty())chooseAudio();else showPlayer();}); content.addView(hero); gap(22);
             sectionTitle("Недавно добавлено","Все",()->{activeTab="Медиатека";render();buildNavSelection();});
             if(tracks.isEmpty()) empty("Здесь пока тихо","Добавь локальные аудиофайлы, чтобы начать."); else for(int i=tracks.size()-1;i>=0;i--)trackRow(tracks.get(i),i);
         } else if(activeTab.equals("Медиатека")) {
-            addText("Медиатека",29,TEXT,true); gap(14);
+            addText("Медиатека",30,TEXT,true); addText("ТВОЯ КОЛЛЕКЦИЯ",10,GOLD,true); gap(14);
             LinearLayout cards=new LinearLayout(this); cards.setOrientation(LinearLayout.HORIZONTAL);
             cards.addView(smallCard("♡","Избранное","Сохраняй любимые треки"),new LinearLayout.LayoutParams(0,dp(112),1)); View spacer=new View(this); cards.addView(spacer,new LinearLayout.LayoutParams(dp(10),1)); cards.addView(smallCard("↓","Локальные",tracks.size()+" треков"),new LinearLayout.LayoutParams(0,dp(112),1)); content.addView(cards); gap(20);
             sectionTitle("Треки","+ Добавить",this::chooseAudio);
             if(tracks.isEmpty())empty("Библиотека пуста","Выбери музыку на устройстве."); else for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);
         } else if(activeTab.equals("Поиск")) {
-            addText("Поиск музыки",29,TEXT,true);
+            addText("Поиск",30,TEXT,true);
             addText("Выбирай источник. Ищи музыку в одном месте.",13,MUTED,false); gap(12);
-            LinearLayout searchBox = new LinearLayout(this); searchBox.setGravity(Gravity.CENTER_VERTICAL); searchBox.setPadding(dp(12),dp(4),dp(5),dp(4)); searchBox.setBackground(round(0xDD202126,22,0x66FFFFFF,1));
+            LinearLayout searchBox = new LinearLayout(this); searchBox.setGravity(Gravity.CENTER_VERTICAL); searchBox.setPadding(dp(12),dp(4),dp(5),dp(4)); searchBox.setBackground(round(0xEE191821,20,0x44B89CFF,1));
             searchInput = new EditText(this); searchInput.setSingleLine(true); searchInput.setTextColor(TEXT); searchInput.setHintTextColor(MUTED); searchInput.setTextSize(15); searchInput.setHint("Песня, исполнитель, альбом"); searchInput.setBackgroundColor(Color.TRANSPARENT); searchInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
             searchBox.addView(searchInput,new LinearLayout.LayoutParams(0,dp(48),1));
-            TextView go=label("НАЙТИ",12,BG,true); go.setGravity(Gravity.CENTER); go.setPadding(dp(14),dp(12),dp(14),dp(12)); go.setBackground(round(GOLD,15,0,0)); searchBox.addView(go); content.addView(searchBox);
+            TextView go=label("⌕",22,BG,true); go.setGravity(Gravity.CENTER); go.setPadding(dp(15),dp(8),dp(15),dp(8)); go.setBackground(round(GOLD,15,0,0)); searchBox.addView(go); content.addView(searchBox);
             go.setOnClickListener(v->runUnifiedSearch(searchInput.getText().toString().trim()));
             searchInput.setOnEditorActionListener((v,action,event)->{if(action==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH){runUnifiedSearch(searchInput.getText().toString().trim());return true;}return false;});
             gap(12);
-            LinearLayout sourcePicker = new LinearLayout(this); sourcePicker.setGravity(Gravity.CENTER_VERTICAL); sourcePicker.setPadding(dp(14),dp(13),dp(14),dp(13)); sourcePicker.setBackground(round(0xB827292F,18,0x55FFFFFF,1));
-            TextView sourceIcon=label("◉",22,GOLD,true); sourcePicker.addView(sourceIcon); LinearLayout sourceText=new LinearLayout(this);sourceText.setOrientation(LinearLayout.VERTICAL);sourceText.setPadding(dp(10),0,0,0);sourceText.addView(label("Где искать музыку",14,TEXT,true));sourceText.addView(label("Выбрать сервис • 7 источников",11,MUTED,false));sourcePicker.addView(sourceText,new LinearLayout.LayoutParams(0,-2,1));sourcePicker.addView(label("⌄",20,GOLD,true));LinearLayout.LayoutParams sourceParams=new LinearLayout.LayoutParams(-1,-2);sourceParams.bottomMargin=dp(8);content.addView(sourcePicker,sourceParams);sourcePicker.setOnClickListener(v->showSourcePicker());
-            addText("РЕЗУЛЬТАТЫ ПОИСКА",11,GOLD,true);
+            LinearLayout sourcePicker = new LinearLayout(this); sourcePicker.setGravity(Gravity.CENTER_VERTICAL); sourcePicker.setPadding(dp(12),dp(12),dp(12),dp(12)); sourcePicker.setBackground(round(0xAA1B1925,19,0x44B89CFF,1));
+            TextView sourceIcon=label("◉",22,GOLD,true); sourceIcon.setGravity(Gravity.CENTER); sourceIcon.setBackground(round(0x33251F3A,14,0x22B89CFF,1)); sourcePicker.addView(sourceIcon); LinearLayout sourceText=new LinearLayout(this);sourceText.setOrientation(LinearLayout.VERTICAL);sourceText.setPadding(dp(10),0,0,0);sourceText.addView(label("Где искать музыку",14,TEXT,true));sourceText.addView(label("Выбрать сервис • 7 источников",11,MUTED,false));sourcePicker.addView(sourceText,new LinearLayout.LayoutParams(0,-2,1));sourcePicker.addView(label("⌄",20,GOLD,true));LinearLayout.LayoutParams sourceParams=new LinearLayout.LayoutParams(-1,-2);sourceParams.bottomMargin=dp(8);content.addView(sourcePicker,sourceParams);sourcePicker.setOnClickListener(v->showSourcePicker());
+            addText("РЕЗУЛЬТАТЫ",10,GOLD,true);
             searchResults = new LinearLayout(this); searchResults.setOrientation(LinearLayout.VERTICAL); content.addView(searchResults);
             if(!lastSearch.isEmpty()){
                 searchInput.setText(lastSearch);
@@ -173,15 +173,15 @@ public class MainActivity extends AppCompatActivity {
             } else addSearchMessage("Результаты Deezer и Apple Music появятся здесь. Другие сервисы откроются отдельно.");
             if(!tracks.isEmpty()){gap(8);addText("ТВОЯ МУЗЫКА НА УСТРОЙСТВЕ",11,GOLD,true);for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);}
         } else if(activeTab.equals("Радио")) {
-            addText("Радио",29,TEXT,true); gap(12); LinearLayout card=panel(true); addTextTo(card,"VYNIX RADIO",12,GOLD,true); addTextTo(card,"Твой поток. Твои правила.",22,TEXT,true); addTextTo(card,"Персональное онлайн-радио появится после подключения источников.",13,MUTED,false); content.addView(card); gap(16); empty("Радио готовится","Сейчас можно слушать локальные аудиофайлы.");
+            addText("Радио",30,TEXT,true); addText("СЛУШАЙ В СВОЁМ РИТМЕ",10,GOLD,true); gap(12); LinearLayout card=panel(true); addTextTo(card,"VYNIX RADIO",12,GOLD,true); addTextTo(card,"Твой поток. Твои правила.",22,TEXT,true); addTextTo(card,"Персональное онлайн-радио появится после подключения источников.",13,MUTED,false); content.addView(card); gap(16); empty("Радио готовится","Сейчас можно слушать локальные аудиофайлы.");
         } else {
-            addText("Профиль",29,TEXT,true); gap(12); LinearLayout profile=panel(false); addTextTo(profile,"V",42,GOLD,true); addTextTo(profile,accountName,20,TEXT,true); addTextTo(profile,"Аккаунт VYNIX • "+accountStatus,13,MUTED,false); addTextTo(profile,"ID: "+(accountId==null?"создаётся":accountId),10,MUTED,false);
+            addText("Профиль",30,TEXT,true); addText("ТВОЙ VYNIX",10,GOLD,true); gap(12); LinearLayout profile=panel(false); addTextTo(profile,"V",42,GOLD,true); addTextTo(profile,accountName,20,TEXT,true); addTextTo(profile,"Аккаунт VYNIX • "+accountStatus,13,MUTED,false); addTextTo(profile,"ID: "+(accountId==null?"создаётся":accountId),10,MUTED,false);
             TextView rename=button("Изменить имя профиля"); profile.addView(rename); rename.setOnClickListener(v->{android.widget.EditText input=new android.widget.EditText(this);input.setSingleLine(true);input.setText(accountName);input.setTextColor(TEXT);input.setHintTextColor(MUTED);new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Имя аккаунта").setView(input).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",(dialog,which)->{String n=input.getText().toString().trim();if(!n.isEmpty()){accountName=n;getSharedPreferences("vynix_account",MODE_PRIVATE).edit().putString("display_name",n).apply();render();saveAccountName(n);}}).show();});
             content.addView(profile); gap(12);
-            for(String option:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+option+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);row.setOnClickListener(v->showProfileOption(option));}
+            for(String option:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+option+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(0xEE17161F,17,0x22B89CFF,1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);row.setOnClickListener(v->showProfileOption(option));}
         }
     }
-    private void showSourcePicker() {
+    private void gapInside(LinearLayout parent,int height) { View spacer=new View(this); parent.addView(spacer,new LinearLayout.LayoutParams(1,height)); }\n\n    private void showSourcePicker() {
         final String[][] providers={
             {"Deezer","Открытый каталог • поиск внутри VYNIX","https://www.deezer.com/search/","D"},
             {"Apple Music","Каталог iTunes • поиск внутри VYNIX","https://music.apple.com/search?term=","A"},
@@ -193,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
         };
         android.app.Dialog dialog=new android.app.Dialog(this);
         LinearLayout sheet=new LinearLayout(this);sheet.setOrientation(LinearLayout.VERTICAL);sheet.setPadding(dp(20),dp(10),dp(20),dp(18));
-        sheet.setBackground(round(0xE8171722,30,0x33D9CCFF,1));
+        sheet.setBackground(round(0xF015141E,30,0x44B89CFF,1));
         View handle=new View(this);handle.setBackground(round(0x88FFFFFF,5,0,0));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(dp(42),dp(4));hp.gravity=Gravity.CENTER;hp.bottomMargin=dp(18);sheet.addView(handle,hp);
         sheet.addView(label("Источник музыки",23,TEXT,true));
         TextView subtitle=label("ВЫБЕРИ, ГДЕ ИСКАТЬ",10,MUTED,true);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(5);sp.bottomMargin=dp(16);sheet.addView(subtitle,sp);
@@ -201,7 +201,7 @@ public class MainActivity extends AppCompatActivity {
         for(int i=0;i<providers.length;i++){
             final String[] provider=providers[i];
             LinearLayout tile=new LinearLayout(this);tile.setGravity(Gravity.CENTER_VERTICAL);tile.setPadding(dp(12),dp(11),dp(12),dp(11));
-            tile.setBackground(round(i<2?0xAA302A43:0x552B2938,18,i<2?0x66B89CFF:0x22FFFFFF,1));
+            tile.setBackground(round(i<2?0xCC282239:0x771C1B25,18,i<2?0x66B89CFF:0x22FFFFFF,1));
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.bottomMargin=dp(8);list.addView(tile,tp);
             TextView logo=label(provider[3],19,GOLD,true);logo.setGravity(Gravity.CENTER);logo.setBackground(round(0x33211D32,14,0x33D9CCFF,1));tile.addView(logo,new LinearLayout.LayoutParams(dp(46),dp(46)));
             LinearLayout details=new LinearLayout(this);details.setOrientation(LinearLayout.VERTICAL);details.setPadding(dp(12),0,dp(4),0);details.addView(label(provider[0],15,TEXT,true));details.addView(label(provider[1],10,MUTED,false));tile.addView(details,new LinearLayout.LayoutParams(0,-2,1));
@@ -216,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
         }
         sheet.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         TextView note=label("Часть каталогов открывается внутри VYNIX. Остальные сервисы используют свой поиск.",10,MUTED,false);note.setPadding(dp(3),dp(12),dp(3),0);sheet.addView(note);
-        dialog.setContentView(sheet);
+        sheet.setElevation(dp(18)); dialog.setContentView(sheet);
         dialog.show();
         if(dialog.getWindow()!=null){
             android.view.Window w=dialog.getWindow();
