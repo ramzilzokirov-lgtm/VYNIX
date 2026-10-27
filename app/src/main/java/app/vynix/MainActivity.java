@@ -11,6 +11,7 @@ import android.provider.OpenableColumns;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -146,7 +147,7 @@ public class MainActivity extends AppCompatActivity {
     private void buildNavSelection() {
         LinearLayout nav=navBar();
         String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"◉","Радио"},{"●","Профиль"}};
-        for(int i=0;i<nav.getChildCount();i++){LinearLayout item=(LinearLayout)nav.getChildAt(i); boolean sel=tabs[i][1].equals(activeTab); ((TextView)item.getChildAt(0)).setTextColor(sel?GOLD:MUTED); ((TextView)item.getChildAt(1)).setTextColor(sel?GOLD:MUTED); item.setBackground(sel?round(0x332F2944,19,0x33B89CFF,1):null);}
+        for(int i=0;i<nav.getChildCount();i++){LinearLayout item=(LinearLayout)nav.getChildAt(i); boolean sel=tabs[i][1].equals(activeTab); ((TextView)item.getChildAt(0)).setTextColor(sel?GOLD:MUTED); ((TextView)item.getChildAt(1)).setTextColor(sel?GOLD:MUTED); item.setBackground(sel?round(0x332F2944,19,0x33B89CFF,1):null); item.animate().cancel(); item.setScaleX(sel?0.96f:1f); item.setScaleY(sel?0.96f:1f); item.animate().scaleX(1f).scaleY(1f).setDuration(sel?220:140).setInterpolator(new DecelerateInterpolator(1.5f)).start();}
     }
 
     private void render() {
@@ -192,6 +193,22 @@ public class MainActivity extends AppCompatActivity {
             TextView rename=button("Изменить имя профиля"); profile.addView(rename); rename.setOnClickListener(v->{android.widget.EditText input=new android.widget.EditText(this);input.setSingleLine(true);input.setText(accountName);input.setTextColor(TEXT);input.setHintTextColor(MUTED);new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Имя аккаунта").setView(input).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",(dialog,which)->{String n=input.getText().toString().trim();if(!n.isEmpty()){accountName=n;getSharedPreferences("vynix_account",MODE_PRIVATE).edit().putString("display_name",n).apply();render();saveAccountName(n);}}).show();});
             content.addView(profile); gap(12);
             for(String option:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+option+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(0xEE17161F,17,0x22B89CFF,1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);row.setOnClickListener(v->showProfileOption(option));}
+        }
+        animateScreenContent();
+    }
+
+    private void animateScreenContent() {
+        if (content == null) return;
+        for (int i = 0; i < content.getChildCount(); i++) {
+            View child = content.getChildAt(i);
+            child.animate().cancel();
+            child.setAlpha(0f);
+            child.setTranslationY(dp(12));
+            child.animate().alpha(1f).translationY(0f)
+                    .setStartDelay(Math.min(i * 24L, 180L))
+                    .setDuration(260L)
+                    .setInterpolator(new DecelerateInterpolator(1.7f))
+                    .start();
         }
     }
     private void gapInside(LinearLayout parent,int height) { View spacer=new View(this); parent.addView(spacer,new LinearLayout.LayoutParams(1,height)); }
@@ -352,7 +369,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout smallCard(String icon,String title,String sub){LinearLayout c=panel(false);c.setPadding(dp(15),dp(15),dp(12),dp(12));c.setBackground(round(0xFF191722,21,0x33B89CFF,1));TextView symbol=label(icon,24,GOLD,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(round(0x33251F3A,14,0x22B89CFF,1));c.addView(symbol,new LinearLayout.LayoutParams(dp(42),dp(42)));gapInside(c,dp(9));addTextTo(c,title,15,TEXT,true);addTextTo(c,sub,10,MUTED,false);return c;}
     private LinearLayout panel(boolean hero){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(18),dp(18),dp(18),dp(18));c.setBackground(round(hero?0xFF211C31:0xFF15141D,24,hero?0x66B89CFF:0x22FFFFFF,1));c.setElevation(dp(hero?3:1));return c;}
     private void empty(String title,String body){LinearLayout c=panel(false);addTextTo(c,title,17,TEXT,true);addTextTo(c,body,13,MUTED,false);content.addView(c);}
-    private TextView button(String text){TextView b=label(text,14,Color.rgb(18,15,25),true);b.setGravity(Gravity.CENTER);b.setLetterSpacing(.015f);b.setPadding(dp(18),dp(15),dp(18),dp(15));b.setBackground(round(GOLD,18,0,0));b.setElevation(dp(2));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(14);b.setLayoutParams(p);b.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN)v.animate().scaleX(.98f).scaleY(.98f).setDuration(80).start();else if(event.getAction()==android.view.MotionEvent.ACTION_UP||event.getAction()==android.view.MotionEvent.ACTION_CANCEL)v.animate().scaleX(1f).scaleY(1f).setDuration(130).start();return false;});return b;}
+    private TextView button(String text){TextView b=label(text,14,Color.rgb(18,15,25),true);b.setGravity(Gravity.CENTER);b.setLetterSpacing(.015f);b.setPadding(dp(18),dp(15),dp(18),dp(15));b.setBackground(round(GOLD,18,0,0));b.setElevation(dp(2));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(14);b.setLayoutParams(p);b.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN)v.animate().scaleX(.98f).scaleY(.98f).setDuration(80).start();else if(event.getAction()==android.view.MotionEvent.ACTION_UP||event.getAction()==android.view.MotionEvent.ACTION_CANCEL)v.animate().scaleX(1f).scaleY(1f).setDuration(130).start();return false;});b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33FFFFFF),round(GOLD,18,0,0),null));return b;}
     private void addText(String text,int size,int color,boolean bold){TextView t=label(text,size,color,bold);content.addView(t);}
     private void addTextTo(LinearLayout target,String text,int size,int color,boolean bold){TextView t=label(text,size,color,bold);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(7);target.addView(t,p);}
     private TextView label(String text,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(text);t.setTextSize(size);t.setTextColor(color);t.setIncludeFontPadding(false);t.setTypeface(Typeface.create(bold?"sans-serif-medium":"sans-serif",bold?Typeface.BOLD:Typeface.NORMAL));return t;}
