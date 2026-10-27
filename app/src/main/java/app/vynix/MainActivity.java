@@ -38,7 +38,8 @@ import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     private static final int BG = Color.rgb(8, 8, 13), PANEL = Color.rgb(20, 19, 29), PANEL2 = Color.rgb(29, 27, 41);
-    private static final int GOLD = Color.rgb(184, 156, 255), TEXT = Color.rgb(245, 243, 250), MUTED = Color.rgb(157, 153, 171);
+    private int GOLD = Color.rgb(184, 156, 255);
+    private static final int TEXT = Color.rgb(245, 243, 250), MUTED = Color.rgb(157, 153, 171);
     private final List<Track> tracks = new ArrayList<>();
     private ExoPlayer player;
     private LinearLayout root, content, mini;
@@ -62,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        applySavedAccent();
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(0);
@@ -97,6 +99,13 @@ public class MainActivity extends AppCompatActivity {
         buildShell();
         render();
         loadAccount();
+    }
+
+    private void applySavedAccent() {
+        int accent=getSharedPreferences("vynix_settings",MODE_PRIVATE).getInt("accent",1);
+        if(accent==0)GOLD=Color.rgb(232,190,92);
+        else if(accent==2)GOLD=Color.rgb(100,224,174);
+        else GOLD=Color.rgb(184,156,255);
     }
 
     private void buildShell() {
@@ -273,10 +282,9 @@ public class MainActivity extends AppCompatActivity {
             int selected=prefs.getInt("accent",0);
             new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Акцентный цвет").setSingleChoiceItems(choices,selected,(dialog,which)->{
                 prefs.edit().putInt("accent",which).apply();
+                applySavedAccent();
                 dialog.dismiss();
-                new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Цвет сохранён")
-                    .setMessage("Выбор сохранён. Для текущего экрана основной золотой акцент останется без изменений до полной настройки темы.")
-                    .setPositiveButton("ОК",null).show();
+                render(); buildNavSelection();
             }).setNegativeButton("Отмена",null).show();
             return;
         }
