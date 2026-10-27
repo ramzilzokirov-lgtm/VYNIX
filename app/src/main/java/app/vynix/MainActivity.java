@@ -133,7 +133,7 @@ public class MainActivity extends AppCompatActivity {
         playButton.setOnClickListener(v -> togglePlayback()); mini.setOnClickListener(v -> showPlayer()); mini.setElevation(dp(5));
         LinearLayout nav = new LinearLayout(this); nav.setGravity(Gravity.CENTER); nav.setPadding(dp(5),dp(4),dp(5),dp(4)); nav.setBackground(round(0xF0191822, 28, 0x22B89CFF, 1));
         LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, dp(66)); np.setMargins(dp(12),0,dp(12),dp(12)); root.addView(nav,np);
-        String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"◉","Радио"},{"●","Профиль"}};
+        String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"●","Профиль"}};
         for (String[] t:tabs) {
             LinearLayout item=new LinearLayout(this); item.setOrientation(LinearLayout.VERTICAL); item.setGravity(Gravity.CENTER); item.setPadding(0,dp(5),0,dp(3));
             TextView ico=label(t[0],21,activeTab.equals(t[1])?GOLD:MUTED,true); ico.setGravity(Gravity.CENTER); TextView txt=label(t[1],9,activeTab.equals(t[1])?GOLD:MUTED,false); txt.setGravity(Gravity.CENTER);
@@ -146,7 +146,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout navBar() { return (LinearLayout) root.getChildAt(root.getChildCount()-1); }
     private void buildNavSelection() {
         LinearLayout nav=navBar();
-        String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"◉","Радио"},{"●","Профиль"}};
+        String[][] tabs={{"⌂","Главная"},{"▤","Медиатека"},{"⌕","Поиск"},{"●","Профиль"}};
         for(int i=0;i<nav.getChildCount();i++){LinearLayout item=(LinearLayout)nav.getChildAt(i); boolean sel=tabs[i][1].equals(activeTab); ((TextView)item.getChildAt(0)).setTextColor(sel?GOLD:MUTED); ((TextView)item.getChildAt(1)).setTextColor(sel?GOLD:MUTED); item.setBackground(sel?round(0x332F2944,19,0x33B89CFF,1):null); item.animate().cancel(); item.setScaleX(sel?0.96f:1f); item.setScaleY(sel?0.96f:1f); item.animate().scaleX(1f).scaleY(1f).setDuration(sel?220:140).setInterpolator(new DecelerateInterpolator(1.5f)).start();}
     }
 
@@ -156,9 +156,31 @@ public class MainActivity extends AppCompatActivity {
         searchInput = null;
         content.removeAllViews();
         if(activeTab.equals("Главная")) {
-            addText("Твоя волна",30,TEXT,true); addText("ТВОЙ ЗВУК. ТВОЁ ПРОСТРАНСТВО.",10,GOLD,true); gap(18);
-            LinearLayout hero=panel(true); hero.setPadding(dp(20),dp(22),dp(20),dp(20)); hero.setBackground(round(0xFF211C31,27,0x66B89CFF,1)); addTextTo(hero,"V Y N I X     /     YOUR SOUND",10,GOLD,true); gapInside(hero,dp(9)); addTextTo(hero,"Музыка.\nБез лишнего.",30,TEXT,true); gapInside(hero,dp(8)); addTextTo(hero,tracks.isEmpty()?"Собери свою библиотеку и включай любимое.":tracks.size()+" треков уже в твоей библиотеке",13,MUTED,false);
-            TextView action=button(tracks.isEmpty()?"＋   Добавить музыку":"▶   Продолжить слушать"); hero.addView(action); action.setOnClickListener(v->{if(tracks.isEmpty())chooseAudio();else showPlayer();}); content.addView(hero); gap(22);
+            addText("Моя", 38, TEXT, true);
+            addText("волна", 38, TEXT, true);
+            TextView bell=label("♧",25,GOLD,true);bell.setGravity(Gravity.CENTER);LinearLayout.LayoutParams bellp=new LinearLayout.LayoutParams(dp(42),dp(42));bellp.gravity=Gravity.END;bellp.topMargin=-dp(86);content.addView(bell,bellp);bell.setOnClickListener(v->showProfileOption("Уведомления"));
+            gap(12);
+            LinearLayout collage=new LinearLayout(this);collage.setGravity(Gravity.CENTER_VERTICAL);collage.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout left=new LinearLayout(this);left.setOrientation(LinearLayout.VERTICAL);left.setGravity(Gravity.CENTER_VERTICAL);
+            View coverA=albumTile("the autocollants","apple vines",0xFF6F4A78,0xFF2D1C37,"♫");left.addView(coverA,new LinearLayout.LayoutParams(dp(148),dp(184)));
+            TextView mood=label("〽  Обычная",13,MUTED,true);LinearLayout.LayoutParams moodp=new LinearLayout.LayoutParams(-1,dp(40));moodp.topMargin=dp(12);left.addView(mood,moodp);
+            collage.addView(left,new LinearLayout.LayoutParams(0,-2,1.1f));
+            LinearLayout right=new LinearLayout(this);right.setOrientation(LinearLayout.VERTICAL);right.setGravity(Gravity.CENTER_HORIZONTAL);
+            right.addView(albumTile("the autocollants","",0xFF9FB9B5,0xFF354E52,"♫"),new LinearLayout.LayoutParams(dp(104),dp(104)));
+            View gapr=new View(this);right.addView(gapr,new LinearLayout.LayoutParams(1,dp(28)));
+            right.addView(albumTile("VYNIX","after dark",0xFFD9C9D7,0xFF54405C,"✦"),new LinearLayout.LayoutParams(dp(92),dp(92)));
+            TextView bigPlay=label(player!=null&&player.isPlaying()?"Ⅱ":"▶",34,Color.WHITE,true);bigPlay.setGravity(Gravity.CENTER);bigPlay.setBackground(round(0xFF654174,100,0,0));LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(dp(106),dp(106));bp.topMargin=dp(8);right.addView(bigPlay,bp);bigPlay.setOnClickListener(v->{if(tracks.isEmpty())chooseAudio();else togglePlayback();bigPlay.setText(player!=null&&player.isPlaying()?"Ⅱ":"▶");});
+            collage.addView(right,new LinearLayout.LayoutParams(0,-2,0.9f));content.addView(collage);gap(18);
+            LinearLayout quick=new LinearLayout(this);quick.setOrientation(LinearLayout.HORIZONTAL);
+            quick.addView(shortcutCard("◴","Недавние",tracks.size()+" треков",0),new LinearLayout.LayoutParams(0,dp(76),1));
+            View qgap=new View(this);quick.addView(qgap,new LinearLayout.LayoutParams(dp(8),1));
+            quick.addView(shortcutCard("♥","Любимые","Скоро в медиатеке",1),new LinearLayout.LayoutParams(0,dp(76),1));content.addView(quick);gap(28);
+            sectionTitle("Для вас","Обновить",()->{render();});
+            LinearLayout recs=new LinearLayout(this);recs.setOrientation(LinearLayout.HORIZONTAL);
+            recs.addView(albumTile("VYNIX","Ночной режим",0xFF30243B,0xFF825D91,"☾"),new LinearLayout.LayoutParams(0,dp(148),1));
+            View rg=new View(this);recs.addView(rg,new LinearLayout.LayoutParams(dp(12),1));
+            recs.addView(albumTile("LOCAL","Твоя коллекция",0xFF34333D,0xFF8E7B98,"♫"),new LinearLayout.LayoutParams(0,dp(148),1));
+            content.addView(recs);gap(16);
             sectionTitle("Недавно добавлено","Все",()->{activeTab="Медиатека";render();buildNavSelection();});
             if(tracks.isEmpty()) empty("Здесь пока тихо","Добавь локальные аудиофайлы, чтобы начать."); else for(int i=tracks.size()-1;i>=0;i--)trackRow(tracks.get(i),i);
         } else if(activeTab.equals("Медиатека")) {
@@ -211,6 +233,25 @@ public class MainActivity extends AppCompatActivity {
                     .start();
         }
     }
+    private View albumTile(String title,String subtitle,int top,int bottom,String glyph) {
+        LinearLayout tile=new LinearLayout(this);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.BOTTOM);tile.setPadding(dp(10),dp(10),dp(10),dp(10));
+        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{top,bottom});bg.setCornerRadius(dp(22));tile.setBackground(bg);tile.setElevation(dp(2));
+        TextView symbol=label(glyph,30,Color.WHITE,true);symbol.setGravity(Gravity.CENTER);tile.addView(symbol,new LinearLayout.LayoutParams(-1,0,1));
+        TextView name=label(title,11,Color.WHITE,true);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);tile.addView(name);
+        if(subtitle!=null&&!subtitle.isEmpty()){TextView sub=label(subtitle,9,0xFFE5D9E9,false);sub.setMaxLines(1);tile.addView(sub);}
+        tile.setForeground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22FFFFFF),null,round(0x55FFFFFF,22,0,0)));
+        tile.setOnClickListener(v->{v.animate().scaleX(.97f).scaleY(.97f).setDuration(90).withEndAction(()->v.animate().scaleX(1f).scaleY(1f).setDuration(170).start()).start();if(!tracks.isEmpty())showPlayer();else chooseAudio();});
+        return tile;
+    }
+
+    private View shortcutCard(String icon,String title,String subtitle,int index) {
+        LinearLayout card=new LinearLayout(this);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(dp(10),dp(8),dp(8),dp(8));card.setBackground(round(0xFF251F2B,22,0x443E3545,1));
+        TextView glyph=label(icon,19,GOLD,true);glyph.setGravity(Gravity.CENTER);card.addView(glyph,new LinearLayout.LayoutParams(dp(30),dp(42)));
+        LinearLayout texts=new LinearLayout(this);texts.setOrientation(LinearLayout.VERTICAL);texts.setPadding(dp(5),0,0,0);texts.addView(label(title,13,TEXT,true));texts.addView(label(subtitle,10,MUTED,false));card.addView(texts,new LinearLayout.LayoutParams(0,-2,1));
+        card.setOnClickListener(v->{if(index==0){activeTab="Медиатека";render();buildNavSelection();}else Toast.makeText(this,"Избранное появится вместе с сохранением любимых треков",Toast.LENGTH_SHORT).show();});
+        return card;
+    }
+
     private void gapInside(LinearLayout parent,int height) { View spacer=new View(this); parent.addView(spacer,new LinearLayout.LayoutParams(1,height)); }
 
     private void showSourcePicker() {
