@@ -24,6 +24,16 @@ import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     private static final int BG = Color.rgb(8, 9, 11), PANEL = Color.rgb(24, 25, 29), PANEL2 = Color.rgb(32, 33, 38);
@@ -33,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout root, content, mini;
     private TextView miniTitle, playButton;
     private String activeTab = "Главная";
-    private int currentIndex = -1;
+    private int currentIndex = -1;\n    private final ExecutorService apiExecutor = Executors.newSingleThreadExecutor();\n    private String accountId;\n    private String accountName = "VYNIX Listener";\n    private String accountStatus = "Подключаем аккаунт…";\n    private static final String API = "https://vynix-api.onrender.com";
     private ActivityResultLauncher<String[]> audioPicker;
 
     private static class Track {
@@ -64,7 +74,7 @@ public class MainActivity extends AppCompatActivity {
                 if (!exists) tracks.add(new Track(uri, name));
             }
             if (currentIndex < 0 && !tracks.isEmpty()) currentIndex = 0;
-            render(); Toast.makeText(this, "Добавлено: " + uris.size(), Toast.LENGTH_SHORT).show();
+            render(); syncLibrary(); Toast.makeText(this, "Добавлено: " + uris.size(), Toast.LENGTH_SHORT).show();
         });
         buildShell();
         render();
@@ -129,7 +139,9 @@ public class MainActivity extends AppCompatActivity {
         } else if(activeTab.equals("Радио")) {
             addText("Радио",29,TEXT,true); gap(12); LinearLayout card=panel(true); addTextTo(card,"VYNIX RADIO",12,GOLD,true); addTextTo(card,"Твой поток. Твои правила.",22,TEXT,true); addTextTo(card,"Персональное онлайн-радио появится после подключения источников.",13,MUTED,false); content.addView(card); gap(16); empty("Радио готовится","Сейчас можно слушать локальные аудиофайлы.");
         } else {
-            addText("Профиль",29,TEXT,true); gap(12); LinearLayout profile=panel(false); addTextTo(profile,"V",42,GOLD,true); addTextTo(profile,"VYNIX Listener",20,TEXT,true); addTextTo(profile,"Локальный профиль • версия 1.2.6 beta",13,MUTED,false); content.addView(profile); gap(12);
+            addText("Профиль",29,TEXT,true); gap(12); LinearLayout profile=panel(false); addTextTo(profile,"V",42,GOLD,true); addTextTo(profile,accountName,20,TEXT,true); addTextTo(profile,"Аккаунт VYNIX • "+accountStatus,13,MUTED,false); addTextTo(profile,"ID: "+(accountId==null?"создаётся":accountId),10,MUTED,false);
+            TextView rename=button("Изменить имя профиля"); profile.addView(rename); rename.setOnClickListener(v->{android.widget.EditText input=new android.widget.EditText(this);input.setSingleLine(true);input.setText(accountName);input.setTextColor(TEXT);input.setHintTextColor(MUTED);new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Имя аккаунта").setView(input).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",(dialog,which)->{String n=input.getText().toString().trim();if(!n.isEmpty()){accountName=n;getSharedPreferences("vynix_account",MODE_PRIVATE).edit().putString("display_name",n).apply();render();saveAccountName(n);}}).show();});
+            content.addView(profile); gap(12);
             for(String s:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+s+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);}
         }
     }
@@ -150,5 +162,26 @@ public class MainActivity extends AppCompatActivity {
     private void togglePlayback(){if(currentIndex<0){if(!tracks.isEmpty())playTrack(0);else chooseAudio();return;}if(player.isPlaying())player.pause();else player.play();refreshMini();}
     private void refreshMini(){if(miniTitle==null)return;if(currentIndex>=0&&currentIndex<tracks.size())miniTitle.setText(tracks.get(currentIndex).title);playButton.setText(player!=null&&player.isPlaying()?"Ⅱ":"▶");}
     private void showPlayer(){if(currentIndex<0){chooseAudio();return;}android.app.Dialog d=new android.app.Dialog(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(26),dp(24),dp(24));box.setBackground(round(PANEL,28,0,0));TextView close=label("⌄",24,MUTED,true);close.setGravity(Gravity.CENTER);box.addView(close);TextView art=label("♫",88,GOLD,true);art.setGravity(Gravity.CENTER);art.setBackground(round(0xFF211F19,28,0,0));LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,dp(230));ap.setMargins(0,dp(12),0,dp(20));box.addView(art,ap);TextView title=label(tracks.get(currentIndex).title,22,TEXT,true);title.setGravity(Gravity.CENTER);box.addView(title);TextView artist=label("Локальная музыка",13,MUTED,false);artist.setGravity(Gravity.CENTER);box.addView(artist);TextView controls=label("  |◀          "+(player.isPlaying()?"Ⅱ":"▶")+"          ▶|  ",27,GOLD,true);controls.setGravity(Gravity.CENTER);controls.setPadding(0,dp(24),0,dp(24));box.addView(controls);controls.setOnClickListener(v->{togglePlayback();controls.setText("  |◀          "+(player.isPlaying()?"Ⅱ":"▶")+"          ▶|  ");});close.setOnClickListener(v->d.dismiss());d.setContentView(box);if(d.getWindow()!=null)d.getWindow().setBackgroundDrawableResource(android.R.color.transparent);d.show();d.getWindow().setLayout(-1,-2);}
-    @Override protected void onDestroy(){if(player!=null)player.release();super.onDestroy();}
+
+    private JSONObject apiRequest(String path, String method, JSONObject body) throws Exception {
+        HttpURLConnection conn=(HttpURLConnection)new URL(API+path).openConnection();
+        conn.setRequestMethod(method); conn.setConnectTimeout(12000); conn.setReadTimeout(12000);
+        conn.setRequestProperty("Accept","application/json");
+        if(body!=null){conn.setDoOutput(true);conn.setRequestProperty("Content-Type","application/json; charset=utf-8");try(OutputStream os=conn.getOutputStream()){os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));}}
+        int code=conn.getResponseCode();
+        java.io.InputStream stream=code>=200&&code<300?conn.getInputStream():conn.getErrorStream();
+        StringBuilder out=new StringBuilder(); if(stream!=null)try(BufferedReader br=new BufferedReader(new InputStreamReader(stream,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=br.readLine())!=null)out.append(line);}
+        conn.disconnect(); if(code<200||code>=300)throw new java.io.IOException("HTTP "+code+" "+out);
+        return out.length()==0?new JSONObject():new JSONObject(out.toString());
+    }
+    private void loadAccount(){
+        apiExecutor.execute(()->{try{JSONObject p=apiRequest("/v1/profile/"+accountId,"GET",null);String n=p.optString("display_name","VYNIX Listener");runOnUiThread(()->{accountName=n;accountStatus="Синхронизирован";getSharedPreferences("vynix_account",MODE_PRIVATE).edit().putString("display_name",n).apply();if("Профиль".equals(activeTab))render();});syncLibrary();}catch(Exception e){runOnUiThread(()->{accountStatus="сервер недоступен";if("Профиль".equals(activeTab))render();});}});
+    }
+    private void saveAccountName(String name){
+        apiExecutor.execute(()->{try{JSONObject body=new JSONObject();body.put("display_name",name);apiRequest("/v1/profile/"+accountId,"PUT",body);runOnUiThread(()->{accountStatus="Синхронизирован";if("Профиль".equals(activeTab))render();});}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось синхронизировать профиль. Проверь подключение сервера.",Toast.LENGTH_LONG).show());}});
+    }
+    private void syncLibrary(){
+        apiExecutor.execute(()->{try{JSONArray items=new JSONArray();for(Track t:tracks){JSONObject item=new JSONObject();item.put("item_id",t.uri.toString());item.put("title",t.title);item.put("artist","");item.put("source","local");item.put("favorite",false);items.put(item);}JSONObject body=new JSONObject();body.put("items",items);apiRequest("/v1/library/"+accountId,"PUT",body);}catch(Exception ignored){}});
+    }
+\n    @Override protected void onDestroy(){apiExecutor.shutdownNow();if(player!=null)player.release();super.onDestroy();}
 }
