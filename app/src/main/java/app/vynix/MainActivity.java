@@ -137,7 +137,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void render() {
-        if(content==null)return; content.removeAllViews();
+        if(content==null)return;
+        searchResults = null;
+        searchInput = null;
+        content.removeAllViews();
         if(activeTab.equals("Главная")) {
             addText("Твоя волна",29,TEXT,true); addText("Музыка под твоё настроение",14,MUTED,false); gap(18);
             LinearLayout hero=panel(true); addTextTo(hero,"VYNIX RADIO  /  01",11,GOLD,true); addTextTo(hero,"Слушай своё.",26,TEXT,true); addTextTo(hero,tracks.isEmpty()?"Добавь музыку с устройства":tracks.size()+" треков в твоей библиотеке",13,MUTED,false);
@@ -189,21 +192,22 @@ public class MainActivity extends AppCompatActivity {
         if(query==null||query.trim().isEmpty()){Toast.makeText(this,"Введи название песни или исполнителя",Toast.LENGTH_SHORT).show();return;}
         lastSearch=query.trim();if(searchResults!=null){searchResults.removeAllViews();addSearchMessage("Ищем «"+lastSearch+"» в открытых музыкальных каталогах…");}
         final String q=lastSearch;
+        final LinearLayout targetResults=searchResults;
         apiExecutor.execute(()->{
             List<JSONObject> found=new ArrayList<>();List<String> sources=new ArrayList<>();
             try{JSONObject deezer=getJson("https://api.deezer.com/search?q="+Uri.encode(q));JSONArray a=deezer.optJSONArray("data");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Deezer");x.put("_url",x.optString("link","https://www.deezer.com/search/"+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
             try{JSONObject itunes=getJson("https://itunes.apple.com/search?media=music&entity=song&limit=15&term="+Uri.encode(q));JSONArray a=itunes.optJSONArray("results");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Apple Music");x.put("_url",x.optString("trackViewUrl","https://music.apple.com/search?term="+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
             runOnUiThread(()->{
-                if(!"Поиск".equals(activeTab)||searchResults==null||!q.equals(lastSearch))return;searchResults.removeAllViews();
+                if(!"Поиск".equals(activeTab)||targetResults==null||searchResults!=targetResults||!q.equals(lastSearch))return;targetResults.removeAllViews();
                 if(found.isEmpty()){addSearchMessage("Не удалось получить результаты из открытых каталогов. Проверь интернет или выбери сервис выше.");return;}
-                TextView count=label("Найдено: "+found.size()+" • Deezer и Apple Music",11,MUTED,false);count.setPadding(0,0,0,dp(8));searchResults.addView(count);
+                TextView count=label("Найдено: "+found.size()+" • Deezer и Apple Music",11,MUTED,false);count.setPadding(0,0,0,dp(8));targetResults.addView(count);
                 for(JSONObject x:found){
                     boolean deezer="Deezer".equals(x.optString("_source"));
                     String title=deezer?x.optString("title","Без названия"):x.optString("trackName","Без названия");
                     String artist=deezer?x.optJSONObject("artist")!=null?x.optJSONObject("artist").optString("name",""): "":x.optString("artistName","");
                     String album=deezer?x.optJSONObject("album")!=null?x.optJSONObject("album").optString("title",""): "":x.optString("collectionName","");
                     String url=x.optString("_url","");
-                    LinearLayout row=new LinearLayout(MainActivity.this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(10),dp(10),dp(10),dp(10));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(7);searchResults.addView(row,rp);
+                    LinearLayout row=new LinearLayout(MainActivity.this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(10),dp(10),dp(10),dp(10));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(7);targetResults.addView(row,rp);
                     TextView icon=label("♫",23,GOLD,true);icon.setGravity(Gravity.CENTER);row.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(42)));
                     LinearLayout info=new LinearLayout(MainActivity.this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(10),0,dp(6),0);info.addView(label(title,14,TEXT,true));info.addView(label(artist+(album.isEmpty()?"":" • "+album),11,MUTED,false));info.addView(label(x.optString("_source"),10,GOLD,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(label("↗",19,GOLD,true));row.setOnClickListener(v->openProvider(url.isEmpty()?"https://www.deezer.com/search/":url,""));
                 }
@@ -211,8 +215,16 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     private JSONObject getJson(String address)throws Exception{
-        HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();c.setRequestMethod("GET");c.setConnectTimeout(9000);c.setReadTimeout(12000);c.setRequestProperty("Accept","application/json");
-        int code=c.getResponseCode();java.io.InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();StringBuilder b=new StringBuilder();if(in!=null)try(BufferedReader r=new BufferedReader(new InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=r.readLine())!=null)b.append(line);}c.disconnect();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);return new JSONObject(b.toString());
+        HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();
+        try {
+            c.setRequestMethod("GET");c.setConnectTimeout(9000);c.setReadTimeout(12000);c.setRequestProperty("Accept","application/json");
+            int code=c.getResponseCode();
+            java.io.InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();
+            StringBuilder b=new StringBuilder();
+            if(in!=null)try(BufferedReader r=new BufferedReader(new InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=r.readLine())!=null)b.append(line);}
+            if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);
+            return new JSONObject(b.toString());
+        } finally { c.disconnect(); }
     }
     private void sectionTitle(String title,String action,Runnable r){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);TextView a=label(title,19,TEXT,true);row.addView(a,new LinearLayout.LayoutParams(0,-2,1));TextView b=label(action,12,GOLD,true);row.addView(b);b.setOnClickListener(v->r.run());content.addView(row);gap(10);}
     private void trackRow(Track t,int index){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(10),dp(9),dp(8),dp(9));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(7);content.addView(row,p);TextView art=label("♫",22,GOLD,true);art.setGravity(Gravity.CENTER);art.setBackground(round(0xFF27251F,13,0,0));row.addView(art,new LinearLayout.LayoutParams(dp(45),dp(45)));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(11),0,0,0);info.addView(label(t.title,14,TEXT,true));info.addView(label("Локальный файл",11,MUTED,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(label("⋮",22,MUTED,false));row.setOnClickListener(v->playTrack(index));}
