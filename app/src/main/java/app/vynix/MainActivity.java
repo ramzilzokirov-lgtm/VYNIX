@@ -183,9 +183,69 @@ public class MainActivity extends AppCompatActivity {
             addText("Профиль",29,TEXT,true); gap(12); LinearLayout profile=panel(false); addTextTo(profile,"V",42,GOLD,true); addTextTo(profile,accountName,20,TEXT,true); addTextTo(profile,"Аккаунт VYNIX • "+accountStatus,13,MUTED,false); addTextTo(profile,"ID: "+(accountId==null?"создаётся":accountId),10,MUTED,false);
             TextView rename=button("Изменить имя профиля"); profile.addView(rename); rename.setOnClickListener(v->{android.widget.EditText input=new android.widget.EditText(this);input.setSingleLine(true);input.setText(accountName);input.setTextColor(TEXT);input.setHintTextColor(MUTED);new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Имя аккаунта").setView(input).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",(dialog,which)->{String n=input.getText().toString().trim();if(!n.isEmpty()){accountName=n;getSharedPreferences("vynix_account",MODE_PRIVATE).edit().putString("display_name",n).apply();render();saveAccountName(n);}}).show();});
             content.addView(profile); gap(12);
-            for(String s:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+s+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);}
+            for(String option:new String[]{"Внешний вид","Плеер и звук","Эквалайзер","Уведомления","Интеграции","О приложении"}){TextView row=label("◈    "+option+"     ›",15,TEXT,false);row.setPadding(dp(15),dp(17),dp(15),dp(17));row.setBackground(round(PANEL,17,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);row.setOnClickListener(v->showProfileOption(option));}
         }
     }
+    private void showProfileOption(String option) {
+        android.content.SharedPreferences prefs=getSharedPreferences("vynix_settings",MODE_PRIVATE);
+        if ("О приложении".equals(option)) {
+            new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("VYNIX")
+                .setMessage("VYNIX 1.2.6-beta\nМузыкальный плеер с локальной библиотекой и поиском по открытым каталогам.\n\nВоспроизведение сторонних сервисов зависит от их официальных приложений и доступных API.")
+                .setPositiveButton("Понятно",null).show();
+            return;
+        }
+        if ("Интеграции".equals(option)) {
+            String[] names={"Spotify","SoundCloud","VK Музыка","YouTube Music","Apple Music","Deezer","Яндекс Музыка"};
+            String[] urls={"https://open.spotify.com/","https://soundcloud.com/","https://vk.com/music","https://music.youtube.com/","https://music.apple.com/","https://www.deezer.com/","https://music.yandex.ru/"};
+            new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Музыкальные сервисы").setItems(names,(dialog,which)->openProvider(urls[which],"")).show();
+            return;
+        }
+        if ("Эквалайзер".equals(option)) {
+            try {
+                android.media.audiofx.Equalizer eq=new android.media.audiofx.Equalizer(0,player.getAudioSessionId());
+                short bands=eq.getNumberOfBands();
+                String[] labels=new String[bands];
+                short[] range=eq.getBandLevelRange();
+                for(short i=0;i<bands;i++) labels[i]=(eq.getCenterFreq(i)/1000)+" Hz";
+                eq.release();
+                new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Эквалайзер")
+                    .setMessage("Доступность и настройки эквалайзера зависят от аудиодвижка устройства. Открой системные настройки звука, если они поддерживают эквалайзер.")
+                    .setPositiveButton("Понятно",null).show();
+            } catch(Exception e) {
+                new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Эквалайзер")
+                    .setMessage("На этом устройстве системный эквалайзер недоступен. Воспроизведение продолжит работать без изменений.")
+                    .setPositiveButton("Понятно",null).show();
+            }
+            return;
+        }
+        if ("Внешний вид".equals(option)) {
+            String[] choices={"Золотой","Лавандовый","Изумрудный"};
+            int selected=prefs.getInt("accent",0);
+            new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Акцентный цвет").setSingleChoiceItems(choices,selected,(dialog,which)->{
+                prefs.edit().putInt("accent",which).apply();
+                dialog.dismiss();
+                new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Цвет сохранён")
+                    .setMessage("Выбор сохранён. Для текущего экрана основной золотой акцент останется без изменений до полной настройки темы.")
+                    .setPositiveButton("ОК",null).show();
+            }).setNegativeButton("Отмена",null).show();
+            return;
+        }
+        if ("Плеер и звук".equals(option)) {
+            boolean autoplay=prefs.getBoolean("autoplay",false);
+            new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Плеер и звук")
+                .setMultiChoiceItems(new String[]{"Автоматически продолжать воспроизведение"},new boolean[]{autoplay},(dialog,which,checked)->prefs.edit().putBoolean("autoplay",checked).apply())
+                .setPositiveButton("Готово",null).show();
+            return;
+        }
+        if ("Уведомления".equals(option)) {
+            boolean enabled=prefs.getBoolean("notifications",true);
+            new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Уведомления")
+                .setMessage("Управление уведомлениями плеера будет доступно после подключения системной медиасессии. Здесь можно сохранить предпочтение.")
+                .setPositiveButton(enabled?"Отключить предпочтение":"Включить предпочтение",(dialog,which)->prefs.edit().putBoolean("notifications",!enabled).apply())
+                .setNegativeButton("Отмена",null).show();
+        }
+    }
+
     private void openProvider(String base,String query){try{Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse(base+Uri.encode(query)));startActivity(i);}catch(Exception e){Toast.makeText(this,"Не удалось открыть источник",Toast.LENGTH_SHORT).show();}}
     private void addSearchMessage(String message){if(searchResults==null)return;TextView t=label(message,13,MUTED,false);t.setPadding(dp(14),dp(14),dp(14),dp(14));t.setBackground(round(PANEL,16,0,0));searchResults.addView(t);}
     private void runUnifiedSearch(String query){
