@@ -117,6 +117,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var search by remember { mutableStateOf("") }
     var yandexToken by remember { mutableStateOf("") }
     var onlineResults by remember { mutableStateOf(emptyList<AudioTrack>()) }
+    var knownTracks by remember { mutableStateOf<Map<String, AudioTrack>>(emptyMap()) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
     var searchingOnline by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(setOf<String>()) }
     var recent by remember { mutableStateOf(listOf<String>()) }
@@ -160,6 +162,11 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
             .putString("favorites", JSONArray(favorites.toList()).toString())
             .putString("recent", JSONArray(recent.take(50)).toString())
             .putString("playlists", JSONObject().apply { playlists.forEach { (k, v) -> put(k, JSONArray(v)) } }.toString())
+            .putString("known_tracks", JSONArray(knownTracks.values.map { t ->
+                JSONObject().put("id", t.id).put("uri", t.uri.toString()).put("title", t.title)
+                    .put("artist", t.artist).put("album", t.album).put("duration", t.duration)
+                    .put("artwork", t.artworkUrl ?: JSONObject.NULL).put("source", t.source).put("preview", t.isPreview)
+            }).toString())
             .apply()
     }
 
@@ -174,9 +181,43 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
             val obj = JSONObject(prefs.getString("playlists", "{}"))
             buildMap { val keys = obj.keys(); while (keys.hasNext()) { val k = keys.next(); val a = obj.optJSONArray(k) ?: JSONArray(); put(k, (0 until a.length()).map { a.optString(it) }) } }
         } catch (_: Exception) { emptyMap() }
+        knownTracks = try {
+            val array = JSONArray(prefs.getString("known_tracks", "[]"))
+            buildMap {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val uri = item.optString("uri").takeIf { it.isNotBlank() }?.let(Uri::parse) ?: continue
+                    val track = AudioTrack(item.optLong("id"), uri, item.optString("title"), item.optString("artist"),
+                        item.optString("album"), item.optLong("duration"), item.optString("artwork").takeIf { it.isNotBlank() && it != "null" },
+                        item.optString("source", "SoundCloud"), item.optBoolean("preview", false))
+                    put(track.key, track)
+                }
+            }
+        } catch (_: Exception) { emptyMap() }
     }
 
     val currentPlayer = player()
+    val playbackScope = rememberCoroutineScope()
+    fun playFromLibrary(queue: List<AudioTrack>, index: Int) {
+        playbackScope.launch {
+            playbackError = null
+            try {
+                val resolved = withContext(Dispatchers.IO) {
+                    queue.map { track ->
+                        val stream = if (track.source.startsWith("Яндекс Музыка")) {
+                            resolveYandexStream(track.id, yandexToken)
+                        } else {
+                            NuclearStyleSearch.resolve(track)
+                        }
+                        track.copy(uri = Uri.parse(stream), isPreview = false)
+                    }
+                }
+                onPlay(resolved, index.coerceIn(0, (resolved.size - 1).coerceAtLeast(0)))
+            } catch (_: Exception) {
+                playbackError = "Полный поток для одного из треков недоступен. Попробуй другой результат поиска."
+            }
+        }
+    }
     var isPlaying by remember { mutableStateOf(false) }
     var currentTitle by remember { mutableStateOf("Выбери трек") }
     var currentArtist by remember { mutableStateOf("Твоя музыка начинается здесь") }
@@ -212,9 +253,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     }
 
     val filtered = when {
-        tab == "Избранное" -> onlineResults.filter { it.key in favorites }
-        tab == "Недавние" -> recent.mapNotNull { key -> onlineResults.find { it.key == key } }
-        tab == "Плейлисты" && selectedPlaylist != null -> onlineResults.filter { it.key in (playlists[selectedPlaylist] ?: emptyList()) }
+        tab == "Избранное" -> knownTracks.values.filter { it.key in favorites }
+        tab == "Недавние" -> recent.mapNotNull { key -> knownTracks[key] }
+        tab == "Плейлисты" && selectedPlaylist != null -> (playlists[selectedPlaylist] ?: emptyList()).mapNotNull { key -> knownTracks[key] }
         tab == "Поиск" -> onlineResults
         else -> tracks
     }
@@ -276,12 +317,22 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                             query = search,
                             token = yandexToken,
                             onTokenChange = { token -> yandexToken = token; kotlinx.coroutines.MainScope().launch(Dispatchers.IO) { saveYandexToken(context, token) } },
-                            onPlayTrack = { track -> onPlay(listOf(track), 0) }
+                            onResultsChange = { found ->
+                                onlineResults = found
+                                knownTracks = knownTracks + found.associateBy { it.key }
+                                saveState()
+                            },
+                            onPlayTrack = { track ->
+                                val original = onlineResults.find { it.key == track.key } ?: track
+                                knownTracks = knownTracks + (original.key to original)
+                                saveState()
+                                onPlay(listOf(track), 0)
+                            }
                         )
                     }
-                    tab == "Избранное" -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Избранное")
-                    tab == "Недавние" -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Недавно слушали")
-                    tab == "Плейлисты" && selectedPlaylist != null -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = selectedPlaylist ?: "Плейлист", onBack = { selectedPlaylist = null; tab = "Медиатека" })
+                    tab == "Избранное" -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Избранное")
+                    tab == "Недавние" -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Недавно слушали")
+                    tab == "Плейлисты" && selectedPlaylist != null -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = selectedPlaylist ?: "Плейлист", onBack = { selectedPlaylist = null; tab = "Медиатека" })
                     tab == "Плейлисты" -> PlaylistLibraryScreen(playlists, onCreate = { createPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it })
                     else -> HomeScreen(favorites.size, recent.size, onOpen = { tab = it }, onPlay = { tab = "Поиск" })
                 }
@@ -376,7 +427,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 
 
 @Composable
-private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String) -> Unit, onPlayTrack: (AudioTrack) -> Unit) {
+private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String) -> Unit, onResultsChange: (List<AudioTrack>) -> Unit, onPlayTrack: (AudioTrack) -> Unit) {
     var results by remember { mutableStateOf<List<AudioTrack>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -388,11 +439,12 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
     LaunchedEffect(token) { tokenDraft = token }
     LaunchedEffect(query, token, retry) {
         val q = query.trim()
-        if (q.length < 2) { results = emptyList(); error = null; loading = false; return@LaunchedEffect }
+        if (q.length < 2) { results = emptyList(); onResultsChange(emptyList()); error = null; loading = false; return@LaunchedEffect }
         kotlinx.coroutines.delay(350)
         loading = true; error = null
         try {
             results = withContext(Dispatchers.IO) { searchMultiSourceTracks(q, token) }
+            onResultsChange(results)
             if (results.isEmpty()) error = "Ничего не найдено. Попробуй название и исполнителя."
         } catch (_: Exception) {
             error = "Музыкальные источники временно недоступны. Попробуй ещё раз."
