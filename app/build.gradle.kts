@@ -37,6 +37,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.media3:media3-exoplayer:1.5.1")
+    // SoundCloud delivers playable audio as HLS playlists; without this module ExoPlayer cannot decode those streams.
+    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
     implementation("androidx.media3:media3-session:1.5.1")
     implementation("androidx.media3:media3-common:1.5.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
