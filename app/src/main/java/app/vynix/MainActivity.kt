@@ -268,8 +268,7 @@ private fun HomeScreen(count: Int, favorites: Int, recent: Int, onOpen: (String)
                 Column(Modifier.align(Alignment.CenterStart)) {
                     Text("LISTEN DIFFERENT", color = Lilac, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.spCompat())
                     Spacer(Modifier.height(10.dp))
-                    Text("Твой звук.
-Твои правила.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = White)
+                    Text("Твой звук.\nТвои правила.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = White)
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.PlayArrow, null, tint = Ink); Text("  Слушать музыку", color = White) }
                 }
@@ -311,7 +310,7 @@ private fun FeatureRow(title: String, subtitle: String, icon: androidx.compose.u
 
 @Composable
 private fun LibraryScreen(tracks: List<AudioTrack>, favorites: Set<String>, playlists: Map<String, List<String>>, onFavorite: (AudioTrack) -> Unit, onPlay: (List<AudioTrack>, Int) -> Unit, onCreate: () -> Unit, onOpenPlaylist: (String) -> Unit, onAdd: (AudioTrack) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp, bottom = 20.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 6.dp, end = 18.dp, bottom = 20.dp)) {
         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Медиатека", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("${tracks.size} треков на устройстве", color = Muted) }; Button(onClick = onCreate, colors = ButtonDefaults.buttonColors(containerColor = Lilac, contentColor = Ink)) { Icon(Icons.Rounded.Add, null); Text(" Создать") } } }
         item { Spacer(Modifier.height(18.dp)); Text("ПЛЕЙЛИСТЫ", color = Muted, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.spCompat()); Spacer(Modifier.height(8.dp)) }
         if (playlists.isEmpty()) item { FeatureRow("Создай первый плейлист", "Добавляй треки и собирай подборки", Icons.Rounded.QueueMusic, onCreate) }
