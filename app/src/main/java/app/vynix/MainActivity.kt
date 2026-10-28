@@ -367,6 +367,17 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
             else Column { playlists.keys.forEach { name -> TextButton(onClick = { playlists = playlists + (name to ((playlists[name] ?: emptyList()) + track.key).distinct()); saveState(); addTarget = null }) { Text(name) } } }
         }, confirmButton = { TextButton(onClick = { addTarget = null }) { Text("Закрыть") } })
     }
+
+    if (fullPlayerOpen && currentPlayer?.currentMediaItem != null) {
+        FullPlayer(
+            title = currentTitle, artist = currentArtist, playing = isPlaying, position = position, duration = duration,
+            onClose = { fullPlayerOpen = false },
+            onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer.play() },
+            onPrevious = { currentPlayer.seekToPreviousMediaItem() },
+            onNext = { currentPlayer.seekToNextMediaItem() },
+            onSeek = { currentPlayer.seekTo(it) }
+        )
+    }
 }
 
 private fun Int.spCompat() = this.sp
@@ -490,18 +501,6 @@ private fun MiniPlayer(title: String, artist: String, playing: Boolean, position
         Slider(value = if (dragging >= 0f) dragging else if (duration > 0L) position.toFloat() / duration else 0f, onValueChange = { dragging = it }, onValueChangeFinished = { if (duration > 0) onSeek((dragging * duration).toLong()); dragging = -1f }, modifier = Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 8.dp), colors = SliderDefaults.colors(thumbColor = Lilac, activeTrackColor = Lilac, inactiveTrackColor = Muted.copy(alpha = .25f)))
     }
 }
-
-    if (fullPlayerOpen && currentPlayer?.currentMediaItem != null) {
-        FullPlayer(
-            title = currentTitle, artist = currentArtist, playing = isPlaying, position = position, duration = duration,
-            onClose = { fullPlayerOpen = false },
-            onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer.play() },
-            onPrevious = { currentPlayer.seekToPreviousMediaItem() },
-            onNext = { currentPlayer.seekToNextMediaItem() },
-            onSeek = { currentPlayer.seekTo(it) }
-        )
-    }
-
 
 @Composable
 private fun FullPlayer(title: String, artist: String, playing: Boolean, position: Long, duration: Long, onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
