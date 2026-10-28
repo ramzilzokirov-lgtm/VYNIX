@@ -7,144 +7,79 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/** YouTube Music-only online catalog search. */
+/**
+ * Search and playback URLs for Free To Use's public royalty-free music catalogue.
+ * API documentation: https://freetouse.com/api
+ */
 internal object NuclearStyleSearch {
+    private const val API_BASE = "https://api.freetouse.com/v3"
+
     fun search(query: String): List<AudioTrack> {
-        val home = text("https://music.youtube.com/")
-        val apiKeyPattern = Regex("""INNERTUBE_API_KEY"\s*:\s*"([^"]+)""")
-        val apiKey = apiKeyPattern.find(home)?.groupValues?.getOrNull(1)
-            ?: runCatching { apiKeyPattern.find(text("https://www.youtube.com/"))?.groupValues?.getOrNull(1) }.getOrNull()
-            ?: error("YouTube Music не отдал API-ключ. Проверь интернет и повтори попытку.")
-        val clientVersion = Regex("""INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)""")
-            .find(home)?.groupValues?.getOrNull(1) ?: "1.20261020.01.00"
-        val endpoint = "https://music.youtube.com/youtubei/v1/search?key=" + URLEncoder.encode(apiKey, "UTF-8")
-        val body = JSONObject()
-            .put("context", JSONObject().put("client", JSONObject()
-                .put("clientName", "WEB_REMIX").put("clientVersion", clientVersion)
-                .put("hl", "en").put("gl", "US")))
-            .put("query", query)
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 7000; readTimeout = 12000; requestMethod = "POST"; doOutput = true
-            setRequestProperty("User-Agent", "Mozilla/5.0")
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Origin", "https://music.youtube.com")
-            setRequestProperty("Referer", "https://music.youtube.com/")
+        val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
+        val root = JSONObject(request("$API_BASE/music/tracks/search?query=$encodedQuery&limit=30&order=plays&sort=desc"))
+        if (!root.optBoolean("ok", false)) {
+            error(root.optString("error").ifBlank { "Free To Use не смог выполнить поиск." })
         }
-        val root = try {
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
-            if (connection.responseCode !in 200..299) {
-                val code = connection.responseCode
-                val details = runCatching { connection.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull().orEmpty()
-                val reason = runCatching { JSONObject(details).optJSONObject("error")?.optString("message") }.getOrNull().orEmpty()
-                error("Ошибка YouTube Music API: HTTP $code" + if (reason.isNotBlank()) " — $reason" else "")
-            }
-            JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-        } finally { connection.disconnect() }
-        val renderers = mutableListOf<JSONObject>()
-        fun walk(value: Any?) {
-            when (value) {
-                is JSONObject -> {
-                    val renderer = value.optJSONObject("musicResponsiveListItemRenderer")
-                    if (renderer != null) renderers += renderer
-                    val keys = value.keys()
-                    while (keys.hasNext()) walk(value.opt(keys.next()))
-                }
-                is JSONArray -> for (i in 0 until value.length()) walk(value.opt(i))
-            }
-        }
-        walk(root)
-        return renderers.mapNotNull { item ->
-            val columns = item.optJSONArray("flexColumns") ?: return@mapNotNull null
-            fun columnText(index: Int): String {
-                val renderer = columns.optJSONObject(index)?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
-                val runs = renderer?.optJSONObject("text")?.optJSONArray("runs") ?: return ""
-                return (0 until runs.length()).mapNotNull { runs.optJSONObject(it)?.optString("text")?.takeIf(String::isNotBlank) }.joinToString("")
-            }
-            val title = columnText(0).takeIf(String::isNotBlank) ?: return@mapNotNull null
-            val videoId = item.optJSONObject("playlistItemData")?.optString("videoId")
-                ?.takeIf { it.isNotBlank() && it != "null" }
-                ?: item.optJSONObject("navigationEndpoint")?.optJSONObject("watchEndpoint")?.optString("videoId")
-                    ?.takeIf { it.isNotBlank() && it != "null" }
-                ?: run {
-                    val nav = columns.optJSONObject(0)?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
-                        ?.optJSONObject("text")?.optJSONArray("runs")?.optJSONObject(0)
-                        ?.optJSONObject("navigationEndpoint")?.optJSONObject("watchEndpoint")
-                    nav?.optString("videoId")?.takeIf { it.isNotBlank() && it != "null" }
-                } ?: return@mapNotNull null
-            val artist = columnText(1).ifBlank { "YouTube Music" }
-            var artwork: String? = null
-            fun findThumb(value: Any?) {
-                if (artwork != null) return
-                when (value) {
-                    is JSONObject -> {
-                        val thumbs = value.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
-                        if (thumbs != null && thumbs.length() > 0) artwork = thumbs.optJSONObject(thumbs.length() - 1)?.optString("url")?.takeIf { it.startsWith("http") }
-                        if (artwork == null) { val keys = value.keys(); while (keys.hasNext() && artwork == null) findThumb(value.opt(keys.next())) }
-                    }
-                    is JSONArray -> for (i in 0 until value.length()) { findThumb(value.opt(i)); if (artwork != null) break }
+        val data = root.optJSONArray("data") ?: JSONArray()
+        return (0 until data.length()).mapNotNull { index ->
+            val item = data.optJSONObject(index) ?: return@mapNotNull null
+            val title = item.optString("title").trim()
+            val idText = item.optString("id").trim()
+            val audioUrl = item.optJSONObject("files")?.optString("mp3")?.trim().orEmpty()
+            if (title.isBlank() || audioUrl.isBlank() || !audioUrl.startsWith("https://")) return@mapNotNull null
+            if (item.optBoolean("is_premium", false)) return@mapNotNull null
+
+            val artists = item.optJSONArray("artists")
+            val artistNames = mutableListOf<String>()
+            if (artists != null) {
+                for (artistIndex in 0 until artists.length()) {
+                    val pair = artists.optJSONArray(artistIndex) ?: continue
+                    val artist = pair.optJSONObject(1)?.optString("name")?.trim().orEmpty()
+                    if (artist.isNotBlank()) artistNames += artist
                 }
             }
-            findThumb(item)
-            val durationText = (0 until (item.optJSONArray("fixedColumns")?.length() ?: 0)).mapNotNull { i ->
-                item.optJSONArray("fixedColumns")?.optJSONObject(i)?.optJSONObject("musicResponsiveListItemFixedColumnRenderer")
-                    ?.optJSONObject("text")?.optJSONArray("runs")?.optJSONObject(0)?.optString("text")
-            }.firstOrNull()
-            val duration = durationText?.split(":")?.mapNotNull(String::toLongOrNull)?.fold(0L) { acc, part -> acc * 60 + part }?.times(1000) ?: 0L
-            val id = (videoId.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L)
-            AudioTrack(id, Uri.parse("https://music.youtube.com/watch?v=" + videoId), title, artist, "", duration, artwork, "YouTube Music", false)
+            val artist = artistNames.distinct().joinToString(", ").ifBlank { "Free To Use" }
+            val thumbs = item.optJSONObject("thumbnails")
+            val artwork = listOf("lg", "md", "sm").firstNotNullOfOrNull { key ->
+                thumbs?.optString(key)?.takeIf { it.startsWith("https://") }
+            }
+            val id = (idText.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L)
+            AudioTrack(
+                id = id,
+                uri = Uri.parse(audioUrl),
+                title = title,
+                artist = artist,
+                album = item.optString("genre").takeIf { it.isNotBlank() && it != "null" }.orEmpty(),
+                duration = (item.optDouble("duration", 0.0) * 1000).toLong(),
+                artworkUrl = artwork,
+                source = "Free To Use",
+                isPreview = false
+            )
         }.distinctBy { it.uri.toString() }.take(30)
     }
 
-
-    private data class CachedStream(val url: String, val expiresAt: Long)
-    private val streamCache = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
-
-    @Volatile private var extractorInitialized = false
-
-    private fun ensureExtractorInitialized() {
-        if (extractorInitialized) return
-        synchronized(this) {
-            if (extractorInitialized) return
-            org.schabi.newpipe.extractor.NewPipe.init(
-                VynixDownloader,
-                org.schabi.newpipe.extractor.localization.Localization("en", "US")
-            )
-            extractorInitialized = true
-        }
-    }
-
     fun resolve(track: AudioTrack): String {
-        val sourceUrl = track.uri.toString()
-        if (sourceUrl.contains("googlevideo.com/") || sourceUrl.contains("googleusercontent.com/")) {
-            return sourceUrl
-        }
-        val cached = streamCache[sourceUrl]
-        if (cached != null && System.currentTimeMillis() < cached.expiresAt) return cached.url
-        ensureExtractorInitialized()
-        val info = org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(sourceUrl)
-        val stream = info.audioStreams
-            .filter { it.content.isNotBlank() }
-            .maxByOrNull { it.averageBitrate }
-            ?.content
-            ?: error("YouTube не предоставил доступный аудиопоток для этой песни.")
-        val expirySeconds = Regex("[?&]expire=(\\d+)").find(stream)?.groupValues?.get(1)?.toLongOrNull()
-        val expiry = if (expirySeconds != null) expirySeconds * 1000L - 60_000L
-            else System.currentTimeMillis() + 25 * 60_000L
-        streamCache[sourceUrl] = CachedStream(stream, expiry)
-        return stream
+        val url = track.uri.toString()
+        if (track.source == "Free To Use" && url.startsWith("https://")) return url
+        error("Этот трек не относится к каталогу Free To Use. Выполни поиск заново.")
     }
 
-    private fun text(url: String): String {
+    private fun request(url: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 7000
-            readTimeout = 12000
+            connectTimeout = 10000
+            readTimeout = 15000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "Mozilla/5.0")
-            setRequestProperty("Accept", "*/*")
+            setRequestProperty("User-Agent", "VYNIX Android Music Player/0.1")
+            setRequestProperty("Accept", "application/json")
         }
         return try {
-            if (connection.responseCode !in 200..299) error("HTTP " + connection.responseCode)
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } finally { connection.disconnect() }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val response = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) error("Free To Use API: HTTP $code" + if (response.isNotBlank()) " — " + response.take(160) else "")
+            response
+        } finally {
+            connection.disconnect()
+        }
     }
 }
