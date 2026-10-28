@@ -69,7 +69,12 @@ private val BackgroundPalettes = listOf(
 )
 
 data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве", val isPreview: Boolean = false) {
-    val key: String get() = if (source.startsWith("Яндекс Музыка")) "yandex:$id" else uri.toString()
+    val key: String get() = when {
+        source.startsWith("Яндекс Музыка") -> "yandex:$id"
+        source.equals("SoundCloud", ignoreCase = true) -> "soundcloud:$id"
+        source.equals("Bandcamp", ignoreCase = true) -> "bandcamp:$id"
+        else -> uri.toString()
+    }
 }
 
 class MainActivity : ComponentActivity() {
