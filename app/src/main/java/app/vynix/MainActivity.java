@@ -272,6 +272,56 @@ public class MainActivity extends AppCompatActivity {
         for(int i=0;i<nav.getChildCount();i++){LinearLayout item=(LinearLayout)nav.getChildAt(i); boolean sel=tabs[i][1].equals(activeTab); ((TextView)item.getChildAt(0)).setTextColor(sel?GOLD:MUTED); ((TextView)item.getChildAt(1)).setTextColor(sel?GOLD:MUTED); item.setBackground(sel?round(0x332F2944,19,0x33B89CFF,1):null); item.animate().cancel(); item.setScaleX(sel?0.96f:1f); item.setScaleY(sel?0.96f:1f); item.animate().scaleX(1f).scaleY(1f).setDuration(sel?220:140).setInterpolator(new DecelerateInterpolator(1.5f)).start();}
     }
 
+    private JSONObject playlistsData() {
+        try { return new JSONObject(libraryPrefs().getString("playlists", "{}")); }
+        catch (Exception ignored) { return new JSONObject(); }
+    }
+    private void createPlaylist() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setTextColor(TEXT);
+        input.setHintTextColor(MUTED);
+        input.setHint("Название плейлиста");
+        input.setPadding(dp(14), dp(10), dp(14), dp(10));
+        input.setBackground(round(PANEL, 14, 0x33B89CFF, 1));
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setPadding(dp(20), dp(8), dp(20), 0);
+        wrap.addView(input, new LinearLayout.LayoutParams(-1, -2));
+        new android.app.AlertDialog.Builder(this).setTitle("Новый плейлист").setView(wrap)
+            .setNegativeButton("Отмена", null).setPositiveButton("Создать", (dialog, which) -> {
+                String name = input.getText().toString().trim();
+                if (name.isEmpty()) { Toast.makeText(this, "Введи название плейлиста", Toast.LENGTH_SHORT).show(); return; }
+                JSONObject data = playlistsData();
+                if (data.has(name)) { Toast.makeText(this, "Такой плейлист уже есть", Toast.LENGTH_SHORT).show(); return; }
+                data.put(name, new JSONArray());
+                libraryPrefs().edit().putString("playlists", data.toString()).apply();
+                render();
+            }).show();
+    }
+    private void openPlaylist(String name) { activeTab = "Плейлист:" + name; render(); }
+    private void addToPlaylist(String name, Track track) {
+        JSONObject data = playlistsData();
+        JSONArray items = data.optJSONArray(name);
+        if (items == null) items = new JSONArray();
+        String key = trackKey(track);
+        for (int i = 0; i < items.length(); i++) if (key.equals(items.optString(i))) {
+            Toast.makeText(this, "Трек уже в плейлисте", Toast.LENGTH_SHORT).show(); return;
+        }
+        items.put(key); data.put(name, items);
+        libraryPrefs().edit().putString("playlists", data.toString()).apply();
+        Toast.makeText(this, "Добавлено в «" + name + "»", Toast.LENGTH_SHORT).show();
+        if (activeTab.equals("Плейлист:" + name)) render();
+    }
+    private void showAddToPlaylist(Track track) {
+        JSONObject data = playlistsData();
+        JSONArray names = data.names();
+        if (names == null || names.length() == 0) { createPlaylist(); return; }
+        String[] options = new String[names.length() + 1];
+        options[0] = "＋ Создать плейлист";
+        for (int i = 0; i < names.length(); i++) options[i + 1] = names.optString(i);
+        new android.app.AlertDialog.Builder(this).setTitle("Добавить в плейлист")
+            .setItems(options, (dialog, which) -> { if (which == 0) createPlaylist(); else addToPlaylist(options[which], track); }).show();
+    }
     private void render() {
         if(content==null)return;
         searchResults = null;
@@ -330,6 +380,68 @@ public class MainActivity extends AppCompatActivity {
             cards.addView(smallCard("♡","Избранное","Сохраняй любимые треки"),new LinearLayout.LayoutParams(0,dp(112),1)); View spacer=new View(this); cards.addView(spacer,new LinearLayout.LayoutParams(dp(10),1)); cards.addView(smallCard("↓","Локальные",tracks.size()+" треков"),new LinearLayout.LayoutParams(0,dp(112),1)); content.addView(cards); gap(20);
             sectionTitle("Треки","+ Добавить",this::chooseAudio);
             if(tracks.isEmpty())empty("Библиотека пуста","Выбери музыку на устройстве."); else for(int i=0;i<tracks.size();i++)trackRow(tracks.get(i),i);
+            gap(18);
+            sectionTitle("Плейлисты", "＋ Создать", this::createPlaylist);
+            JSONObject savedPlaylists = playlistsData();
+            JSONArray playlistNames = savedPlaylists.names();
+            if (playlistNames == null || playlistNames.length() == 0) {
+                empty("Пока нет плейлистов", "Создай плейлист и собери в нём любимую музыку.");
+            } else {
+                for (int pi = 0; pi < playlistNames.length(); pi++) {
+                    String playlistName = playlistNames.optString(pi);
+                    JSONArray playlistTracks = savedPlaylists.optJSONArray(playlistName);
+                    int playlistCount = playlistTracks == null ? 0 : playlistTracks.length();
+                    LinearLayout playlistCard = panel(false);
+                    playlistCard.setOrientation(LinearLayout.HORIZONTAL);
+                    playlistCard.setGravity(Gravity.CENTER_VERTICAL);
+                    playlistCard.setPadding(dp(14), dp(13), dp(14), dp(13));
+                    TextView cover = label("♫", 22, GOLD, true);
+                    cover.setGravity(Gravity.CENTER);
+                    cover.setBackground(round(0xFF34253F, 13, 0x33B89CFF, 1));
+                    playlistCard.addView(cover, new LinearLayout.LayoutParams(dp(48), dp(48)));
+                    LinearLayout playlistInfo = new LinearLayout(this);
+                    playlistInfo.setOrientation(LinearLayout.VERTICAL);
+                    playlistInfo.setPadding(dp(12), 0, 0, 0);
+                    playlistInfo.addView(label(playlistName, 15, TEXT, true));
+                    playlistInfo.addView(label(playlistCount + (playlistCount == 1 ? " трек" : " треков"), 11, MUTED, false));
+                    playlistCard.addView(playlistInfo, new LinearLayout.LayoutParams(0, -2, 1));
+                    playlistCard.addView(label("›", 26, MUTED, false));
+                    LinearLayout.LayoutParams playlistParams = new LinearLayout.LayoutParams(-1, -2);
+                    playlistParams.bottomMargin = dp(8);
+                    content.addView(playlistCard, playlistParams);
+                    playlistCard.setOnClickListener(v -> openPlaylist(playlistName));
+                }
+            }
+        } else if (activeTab.startsWith("Плейлист:")) {
+            String playlistName = activeTab.substring("Плейлист:".length());
+            sectionTitle(playlistName, "＋ Добавить треки", () -> {
+                if (tracks.isEmpty()) { chooseAudio(); return; }
+                String[] choices = new String[tracks.size()];
+                for (int i = 0; i < tracks.size(); i++) choices[i] = tracks.get(i).title;
+                new android.app.AlertDialog.Builder(this).setTitle("Добавить в «" + playlistName + "»")
+                    .setItems(choices, (dialog, which) -> addToPlaylist(playlistName, tracks.get(which))).show();
+            });
+            JSONObject saved = playlistsData();
+            JSONArray keys = saved.optJSONArray(playlistName);
+            List<Integer> indices = new ArrayList<>();
+            if (keys != null) for (int k = 0; k < keys.length(); k++) {
+                String key = keys.optString(k, "");
+                for (int j = 0; j < tracks.size(); j++) if (trackKey(tracks.get(j)).equals(key)) { indices.add(j); break; }
+            }
+            if (indices.isEmpty()) empty("Плейлист пуст", "Добавь треки из своей медиатеки.");
+            else for (int index : indices) trackRow(tracks.get(index), index);
+            gap(8);
+            sectionTitle("Управление", null, null);
+            TextView deletePlaylist = label("Удалить плейлист", 13, 0xFFFF8C9A, true);
+            deletePlaylist.setPadding(dp(12), dp(12), dp(12), dp(12));
+            deletePlaylist.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Удалить плейлист?").setMessage("Сами аудиофайлы не будут удалены.")
+                .setNegativeButton("Отмена", null).setPositiveButton("Удалить", (dialog, which) -> {
+                    JSONObject all = playlistsData(); all.remove(playlistName);
+                    libraryPrefs().edit().putString("playlists", all.toString()).apply();
+                    activeTab = "Медиатека"; render();
+                }).show());
+            content.addView(deletePlaylist);
         } else if(activeTab.equals("Поиск")) {
             addText("Поиск",30,TEXT,true);
             addText("Выбирай источник. Ищи музыку в одном месте.",13,MUTED,false); gap(12);
@@ -619,7 +731,7 @@ public class MainActivity extends AppCompatActivity {
         } finally { c.disconnect(); }
     }
     private void sectionTitle(String title,String action,Runnable r){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);TextView a=label(title,19,TEXT,true);row.addView(a,new LinearLayout.LayoutParams(0,-2,1));TextView b=label(action,12,GOLD,true);row.addView(b);b.setOnClickListener(v->r.run());content.addView(row);gap(10);}
-    private void trackRow(Track t,int index){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(11),dp(10),dp(10),dp(10));row.setBackground(round(0xE8171721,19,0x22B89CFF,1));row.setElevation(dp(1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);ImageView art=new ImageView(this);art.setScaleType(ImageView.ScaleType.CENTER_CROP);int[] coverColors={0xFF705174,0xFF4D6466,0xFF7B657C,0xFF464052,0xFF8A6C91,0xFF5D4B6C};GradientDrawable fallbackCover=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{coverColors[Math.abs(t.title.hashCode())%coverColors.length],0xFF2B202F});fallbackCover.setCornerRadius(dp(12));art.setBackground(fallbackCover);art.setClipToOutline(true);art.setElevation(dp(2));row.addView(art,new LinearLayout.LayoutParams(dp(48),dp(48)));loadPlayerArtwork(t.uri,art);LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(12),0,dp(4),0);TextView title=label(t.title,14,TEXT,true);title.setMaxLines(1);title.setEllipsize(android.text.TextUtils.TruncateAt.END);info.addView(title);info.addView(label("НА УСТРОЙСТВЕ  •  ЛОКАЛЬНЫЙ ФАЙЛ",9,MUTED,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));TextView favorite=label(isFavorite(t)?"★":"☆",20,isFavorite(t)?GOLD:MUTED,true);favorite.setGravity(Gravity.CENTER);favorite.setBackground(round(0x33251F3A,13,0x22B89CFF,1));LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(dp(36),dp(38));fp.rightMargin=dp(6);row.addView(favorite,fp);favorite.setOnClickListener(v->toggleFavorite(t));TextView more=label(index==currentIndex&&player!=null&&player.isPlaying()?"Ⅱ":"▶",16,GOLD,true);more.setGravity(Gravity.CENTER);more.setBackground(round(0x33251F3A,13,0x22B89CFF,1));row.addView(more,new LinearLayout.LayoutParams(dp(38),dp(38)));row.setOnClickListener(v->playTrack(index));row.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN){v.animate().scaleX(.985f).scaleY(.985f).setDuration(90).start();}else if(event.getAction()==android.view.MotionEvent.ACTION_UP||event.getAction()==android.view.MotionEvent.ACTION_CANCEL){v.animate().scaleX(1f).scaleY(1f).setDuration(150).start();}return false;});}
+    private void trackRow(Track t,int index){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(11),dp(10),dp(10),dp(10));row.setBackground(round(0xE8171721,19,0x22B89CFF,1));row.setElevation(dp(1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);ImageView art=new ImageView(this);art.setScaleType(ImageView.ScaleType.CENTER_CROP);int[] coverColors={0xFF705174,0xFF4D6466,0xFF7B657C,0xFF464052,0xFF8A6C91,0xFF5D4B6C};GradientDrawable fallbackCover=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{coverColors[Math.abs(t.title.hashCode())%coverColors.length],0xFF2B202F});fallbackCover.setCornerRadius(dp(12));art.setBackground(fallbackCover);art.setClipToOutline(true);art.setElevation(dp(2));row.addView(art,new LinearLayout.LayoutParams(dp(48),dp(48)));loadPlayerArtwork(t.uri,art);LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(12),0,dp(4),0);TextView title=label(t.title,14,TEXT,true);title.setMaxLines(1);title.setEllipsize(android.text.TextUtils.TruncateAt.END);info.addView(title);info.addView(label("НА УСТРОЙСТВЕ  •  ЛОКАЛЬНЫЙ ФАЙЛ",9,MUTED,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));TextView favorite=label(isFavorite(t)?"★":"☆",20,isFavorite(t)?GOLD:MUTED,true);favorite.setGravity(Gravity.CENTER);favorite.setBackground(round(0x33251F3A,13,0x22B89CFF,1));LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(dp(36),dp(38));fp.rightMargin=dp(6);row.addView(favorite,fp);favorite.setOnClickListener(v->toggleFavorite(t));TextView addPlaylist=label("＋",18,MUTED,true);addPlaylist.setGravity(Gravity.CENTER);addPlaylist.setBackground(round(0x33251F3A,13,0x22B89CFF,1));LinearLayout.LayoutParams playlistButtonParams=new LinearLayout.LayoutParams(dp(34),dp(38));playlistButtonParams.rightMargin=dp(5);row.addView(addPlaylist,playlistButtonParams);addPlaylist.setOnClickListener(v->showAddToPlaylist(t));TextView more=label(index==currentIndex&&player!=null&&player.isPlaying()?"Ⅱ":"▶",16,GOLD,true);more.setGravity(Gravity.CENTER);more.setBackground(round(0x33251F3A,13,0x22B89CFF,1));row.addView(more,new LinearLayout.LayoutParams(dp(38),dp(38)));row.setOnClickListener(v->playTrack(index));row.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN){v.animate().scaleX(.985f).scaleY(.985f).setDuration(90).start();}else if(event.getAction()==android.view.MotionEvent.ACTION_UP||event.getAction()==android.view.MotionEvent.ACTION_CANCEL){v.animate().scaleX(1f).scaleY(1f).setDuration(150).start();}return false;});}
     private LinearLayout smallCard(String icon,String title,String sub){LinearLayout c=panel(false);c.setPadding(dp(15),dp(15),dp(12),dp(12));c.setBackground(round(0xFF191722,21,0x33B89CFF,1));TextView symbol=label(icon,24,GOLD,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(round(0x33251F3A,14,0x22B89CFF,1));c.addView(symbol,new LinearLayout.LayoutParams(dp(42),dp(42)));gapInside(c,dp(9));addTextTo(c,title,15,TEXT,true);addTextTo(c,sub,10,MUTED,false);return c;}
     private LinearLayout panel(boolean hero){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(18),dp(18),dp(18),dp(18));c.setBackground(round(hero?0xFF211C31:0xFF15141D,24,hero?0x66B89CFF:0x22FFFFFF,1));c.setElevation(dp(hero?3:1));return c;}
     private void empty(String title,String body){LinearLayout c=panel(false);addTextTo(c,title,17,TEXT,true);addTextTo(c,body,13,MUTED,false);content.addView(c);}
