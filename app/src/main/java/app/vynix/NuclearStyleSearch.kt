@@ -11,9 +11,11 @@ import java.net.URLEncoder
 internal object NuclearStyleSearch {
     fun search(query: String): List<AudioTrack> {
         val home = text("https://music.youtube.com/")
-        val apiKey = Regex("\"INNERTUBE_API_KEY\"\\s*:\\s*\"([^\"]+)\"")
-            .find(home)?.groupValues?.getOrNull(1) ?: error("YouTube Music API key unavailable")
-        val clientVersion = Regex("\"INNERTUBE_CLIENT_VERSION\"\\s*:\\s*\"([^\"]+)\"")
+        val apiKeyPattern = Regex("""INNERTUBE_API_KEY"\s*:\s*"([^"]+)""")
+        val apiKey = apiKeyPattern.find(home)?.groupValues?.getOrNull(1)
+            ?: runCatching { apiKeyPattern.find(text("https://www.youtube.com/"))?.groupValues?.getOrNull(1) }.getOrNull()
+            ?: error("YouTube Music не отдал API-ключ. Проверь интернет и повтори попытку.")
+        val clientVersion = Regex("""INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)""")
             .find(home)?.groupValues?.getOrNull(1) ?: "1.20261020.01.00"
         val endpoint = "https://music.youtube.com/youtubei/v1/search?key=" + URLEncoder.encode(apiKey, "UTF-8")
         val body = JSONObject()
@@ -30,7 +32,12 @@ internal object NuclearStyleSearch {
         }
         val root = try {
             connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
-            if (connection.responseCode !in 200..299) error("YouTube Music HTTP " + connection.responseCode)
+            if (connection.responseCode !in 200..299) {
+                val code = connection.responseCode
+                val details = runCatching { connection.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull().orEmpty()
+                val reason = runCatching { JSONObject(details).optJSONObject("error")?.optString("message") }.getOrNull().orEmpty()
+                error("Ошибка YouTube Music API: HTTP $code" + if (reason.isNotBlank()) " — $reason" else "")
+            }
             JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
         } finally { connection.disconnect() }
         val renderers = mutableListOf<JSONObject>()
