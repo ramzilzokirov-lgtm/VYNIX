@@ -538,9 +538,8 @@ private fun searchYoutubeMusic(query: String): List<YoutubeTrack> {
     homepage.readTimeout = 12000
     homepage.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36")
     val homeText = try { homepage.inputStream.bufferedReader().use { it.readText() } } finally { homepage.disconnect() }
-    val apiKey = Regex("""INNERTUBE_API_KEY\\\s*["']?\\s*:\\s*["']([^"']+)["']""")
+    val apiKey = Regex("""INNERTUBE_API_KEY"\\s*:\\s*"([^"]+)""")
         .find(homeText)?.groupValues?.getOrNull(1)
-        ?: Regex(""""INNERTUBE_API_KEY":"([^"]+)"""").find(homeText)?.groupValues?.getOrNull(1)
         ?: throw IllegalStateException("Music catalog configuration unavailable")
 
     val endpoint = URL("https://music.youtube.com/youtubei/v1/search?key=$apiKey")
