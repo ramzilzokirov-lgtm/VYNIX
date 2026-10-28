@@ -506,16 +506,18 @@ public class MainActivity extends AppCompatActivity {
     private void togglePlayback(){if(currentIndex<0){if(!tracks.isEmpty())playTrack(0);else chooseAudio();return;}if(player.isPlaying())player.pause();else player.play();refreshMini();}
     private void refreshMini(){
         if(miniTitle==null||mini==null||playButton==null)return;
-        boolean playing=player!=null&&player.isPlaying()&&currentIndex>=0&&currentIndex<tracks.size();
+        boolean hasTrack=player!=null&&currentIndex>=0&&currentIndex<tracks.size()&&player.getMediaItemCount()>0;
+        boolean playing=player!=null&&player.isPlaying();
+        boolean shouldShow=hasTrack&&player.getPlayWhenReady()&&player.getPlaybackState()!=androidx.media3.common.Player.STATE_IDLE&&player.getPlaybackState()!=androidx.media3.common.Player.STATE_ENDED;
         mini.animate().cancel();
-        if(playing){
+        if(shouldShow){
             if(mini.getVisibility()!=View.VISIBLE){
                 mini.setVisibility(View.VISIBLE);mini.setAlpha(0f);mini.setTranslationY(dp(10));
                 mini.animate().alpha(1f).translationY(0f).setDuration(220).setInterpolator(new DecelerateInterpolator(1.4f)).start();
             }
         }else if(mini.getVisibility()==View.VISIBLE){
             mini.animate().alpha(0f).translationY(dp(7)).setDuration(140).withEndAction(()->{
-                if(mini!=null&&!(player!=null&&player.isPlaying())){
+                if(mini!=null&&!(player!=null&&player.getPlayWhenReady()&&player.getMediaItemCount()>0&&player.getPlaybackState()!=androidx.media3.common.Player.STATE_ENDED)){
                     mini.setVisibility(View.GONE);mini.setAlpha(1f);mini.setTranslationY(0f);
                 }
             }).start();
@@ -532,6 +534,7 @@ public class MainActivity extends AppCompatActivity {
         playButton.animate().scaleX(1f).scaleY(1f).setDuration(170).setInterpolator(new android.view.animation.OvershootInterpolator(1.4f)).start();
     }
     private void syncPlaybackButtons(){
+        if(root!=null)updatePlayLabels(root,player!=null&&player.isPlaying());
         boolean playing=player!=null&&player.isPlaying();
         if(playButton!=null){
             String icon=playing?"Ⅱ":"▶";
