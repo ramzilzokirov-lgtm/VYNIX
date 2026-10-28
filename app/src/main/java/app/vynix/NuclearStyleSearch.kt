@@ -99,6 +99,20 @@ internal object NuclearStyleSearch {
     private data class CachedStream(val url: String, val expiresAt: Long)
     private val streamCache = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
 
+    @Volatile private var extractorInitialized = false
+
+    private fun ensureExtractorInitialized() {
+        if (extractorInitialized) return
+        synchronized(this) {
+            if (extractorInitialized) return
+            org.schabi.newpipe.extractor.NewPipe.init(
+                VynixDownloader,
+                org.schabi.newpipe.extractor.localization.Localization("en", "US")
+            )
+            extractorInitialized = true
+        }
+    }
+
     fun resolve(track: AudioTrack): String {
         val sourceUrl = track.uri.toString()
         if (sourceUrl.contains("googlevideo.com/") || sourceUrl.contains("googleusercontent.com/")) {
@@ -106,6 +120,7 @@ internal object NuclearStyleSearch {
         }
         val cached = streamCache[sourceUrl]
         if (cached != null && System.currentTimeMillis() < cached.expiresAt) return cached.url
+        ensureExtractorInitialized()
         val info = org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(sourceUrl)
         val stream = info.audioStreams
             .filter { it.content.isNotBlank() }
