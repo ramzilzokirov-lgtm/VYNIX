@@ -365,11 +365,6 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 }
 
 
-private data class OpenAudioResult(
-    val track: AudioTrack,
-    val identifier: String
-)
-
 @Composable
 private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
     var results by remember { mutableStateOf<List<AudioTrack>>(emptyList()) }
@@ -389,14 +384,22 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
         loading = true
         error = null
         try {
-            val found = withContext(Dispatchers.IO) { searchMusicServices(normalized) }
-            results = found
-            if (found.isEmpty()) error = "В открытом каталоге не нашлось доступных полных аудиозаписей. Попробуй другое название."
+            val token = BuildConfig.APPLE_MUSIC_DEVELOPER_TOKEN
+            if (token.isBlank()) {
+                results = emptyList()
+                error = "Apple Music пока не настроен: для поиска нужен Developer Token. Он должен храниться в секрете сборки APPLE_MUSIC_DEVELOPER_TOKEN, а не в исходниках."
+            } else {
+                val found = withContext(Dispatchers.IO) { searchAppleMusicCatalog(normalized, token) }
+                results = found
+                if (found.isEmpty()) error = "Apple Music не вернул доступных предпрослушиваний для этого запроса. Попробуй другое название."
+            }
         } catch (e: Exception) {
             error = when {
+                e.message?.contains("401") == true || e.message?.contains("403") == true ->
+                    "Apple Music отклонил Developer Token (401/403). Проверь ключ и срок его действия."
                 e.message?.contains("timeout", true) == true || e.message?.contains("timed out", true) == true ->
-                    "Каталог отвечает слишком долго. Проверь соединение и повтори поиск."
-                else -> "Не удалось загрузить открытый музыкальный каталог. Попробуй ещё раз."
+                    "Apple Music отвечает слишком долго. Проверь соединение и повтори поиск."
+                else -> "Не удалось выполнить поиск Apple Music. Проверь сеть и настройки токена."
             }
             results = emptyList()
         } finally {
@@ -412,8 +415,8 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Музыкальный поиск", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Полные аудиофайлы · без ключа и веб-плеера", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Apple Music", color = White, fontWeight = FontWeight.SemiBold)
+                Text("Официальный каталог · нативный интерфейс VYNIX", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
@@ -447,9 +450,9 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
                             Text(track.title, color = White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(4.dp))
                             Text(track.artist, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Открытый аудиокаталог · полная запись", color = Lilac, style = MaterialTheme.typography.labelSmall)
+                            Text("Apple Music · предпрослушивание", color = Lilac, style = MaterialTheme.typography.labelSmall)
                         }
-                        Icon(Icons.Rounded.PlayCircle, contentDescription = "Слушать", tint = Lilac, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Rounded.PlayCircle, contentDescription = "Слушать фрагмент", tint = Lilac, modifier = Modifier.size(32.dp))
                     }
                 }
             }
@@ -465,6 +468,49 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
                 }
             }
         }
+    }
+}
+
+private fun searchAppleMusicCatalog(query: String, developerToken: String): List<AudioTrack> {
+    val storefront = java.util.Locale.getDefault().country.lowercase().takeIf { it.length == 2 } ?: "us"
+    val encoded = URLEncoder.encode(query, "UTF-8")
+    val url = URL("https://api.music.apple.com/v1/catalog/$storefront/search?term=$encoded&types=songs&limit=25")
+    val connection = (url.openConnection() as HttpURLConnection).apply {
+        connectTimeout = 10000
+        readTimeout = 12000
+        requestMethod = "GET"
+        setRequestProperty("Authorization", "Bearer $developerToken")
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "VYNIX-Android/2.1")
+    }
+    return try {
+        val status = connection.responseCode
+        if (status !in 200..299) throw IllegalStateException("Apple Music HTTP $status")
+        val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val data = root.optJSONObject("results")?.optJSONObject("songs")?.optJSONArray("data") ?: JSONArray()
+        (0 until data.length()).mapNotNull { index ->
+            val item = data.optJSONObject(index) ?: return@mapNotNull null
+            val attributes = item.optJSONObject("attributes") ?: return@mapNotNull null
+            val previews = attributes.optJSONArray("previews") ?: JSONArray()
+            val preview = (0 until previews.length()).firstNotNullOfOrNull { previews.optJSONObject(it)?.optString("url")?.takeIf(String::isNotBlank) }
+                ?: return@mapNotNull null
+            val artwork = attributes.optJSONObject("artwork")?.optString("url")?.takeIf(String::isNotBlank)
+                ?.replace("{w}", "600").replace("{h}", "600")
+            val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            AudioTrack(
+                id = id.hashCode().toLong(),
+                uri = Uri.parse(preview),
+                title = attributes.optString("name").ifBlank { "Без названия" },
+                artist = attributes.optString("artistName").ifBlank { "Неизвестный исполнитель" },
+                album = attributes.optString("albumName").ifBlank { "Apple Music" },
+                duration = attributes.optLong("durationInMillis", 0L).coerceAtLeast(0L),
+                artworkUrl = artwork,
+                source = "Apple Music",
+                isPreview = true
+            )
+        }.distinctBy { it.key }
+    } finally {
+        connection.disconnect()
     }
 }
 
