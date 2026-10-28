@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,7 +59,7 @@ data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist:
 
 class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
-    private var controller: MediaController? = null
+    private var controller by mutableStateOf<MediaController?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
