@@ -242,11 +242,12 @@ public class MainActivity extends AppCompatActivity {
             View child = content.getChildAt(i);
             child.animate().cancel();
             child.setAlpha(0f);
-            child.setTranslationY(dp(12));
-            child.animate().alpha(1f).translationY(0f)
-                    .setStartDelay(Math.min(i * 24L, 180L))
-                    .setDuration(260L)
-                    .setInterpolator(new DecelerateInterpolator(1.7f))
+            child.setTranslationY(dp(16));
+            child.setScaleX(.985f); child.setScaleY(.985f);
+            child.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                    .setStartDelay(Math.min(i * 28L, 210L))
+                    .setDuration(320L)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(.65f))
                     .start();
         }
     }
@@ -257,7 +258,7 @@ public class MainActivity extends AppCompatActivity {
         TextView name=label(title,11,Color.WHITE,true);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);tile.addView(name);
         if(subtitle!=null&&!subtitle.isEmpty()){TextView sub=label(subtitle,9,0xFFE5D9E9,false);sub.setMaxLines(1);tile.addView(sub);}
         tile.setForeground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22FFFFFF),null,round(0x55FFFFFF,22,0,0)));
-        tile.setOnClickListener(v->{v.animate().scaleX(.97f).scaleY(.97f).setDuration(90).withEndAction(()->v.animate().scaleX(1f).scaleY(1f).setDuration(170).start()).start();if(!tracks.isEmpty())showPlayer();else chooseAudio();});
+        tile.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN){v.animate().cancel();v.animate().scaleX(.965f).scaleY(.965f).alpha(.88f).setDuration(100).start();}else if(event.getAction()==android.view.MotionEvent.ACTION_UP||event.getAction()==android.view.MotionEvent.ACTION_CANCEL){v.animate().cancel();v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(210).setInterpolator(new android.view.animation.OvershootInterpolator(1.1f)).start();}return false;});tile.setOnClickListener(v->{if(!tracks.isEmpty())showPlayer();else chooseAudio();});
         return tile;
     }
 
