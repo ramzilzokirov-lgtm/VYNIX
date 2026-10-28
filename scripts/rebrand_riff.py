@@ -84,4 +84,27 @@ if old_error not in content:
 content = content.replace(old_error, new_error, 1)
 media_source.write_text(content, encoding="utf-8")
 
-print("Prepared VYNIX branding, package ID, version and launcher icon.")
+# Preserve extractor-provided User-Agent/Referer headers. A hard-coded app
+# User-Agent can make signed YouTube/SoundCloud media URLs return HTTP 403.
+old_http_factory = '''                new DefaultHttpDataSource.Factory()
+                    .setUserAgent("RiffAndroid/1.0")
+                    .setConnectTimeoutMs(20000)
+                    .setReadTimeoutMs(30000);'''
+new_http_factory = '''                new DefaultHttpDataSource.Factory()
+                    .setConnectTimeoutMs(20000)
+                    .setReadTimeoutMs(30000);'''
+if old_http_factory not in content:
+    raise SystemExit("Expected HTTP factory block was not found; refusing to build without the playback-header fix.")
+content = content.replace(old_http_factory, new_http_factory, 1)
+
+# Signed stream URLs expire; don't keep resolved URLs for 20 minutes.
+online = app / "src/main/java/io/github/rootscripts/riff/Online.java"
+content = online.read_text(encoding="utf-8")
+old_cache = "if (cached != null && System.currentTimeMillis() - cached.time < 20 * 60 * 1000) return cached;"
+new_cache = "// Signed media URLs expire quickly; avoid reusing stale URLs on replay.\\n    if (cached != null && System.currentTimeMillis() - cached.time < 90 * 1000) return cached;\\n    cache.remove(source);"
+if old_cache not in content:
+    raise SystemExit("Expected stream cache block was not found; refusing to build without the stale-URL fix.")
+content = content.replace(old_cache, new_cache, 1)
+online.write_text(content, encoding="utf-8")
+
+print("Prepared VYNIX branding, package ID, version, launcher icon and online playback fixes.")
