@@ -26,7 +26,8 @@ internal object NuclearStyleSearch {
             fun remainingSeconds(): Long = ((deadline - System.nanoTime()).coerceAtLeast(1L) / 1_000_000_000L).coerceAtLeast(1L)
             val scItems = runCatching { sc.get(remainingSeconds(), java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(emptyList())
             val bcItems = runCatching { bc.get(remainingSeconds(), java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(emptyList())
-            val ytItems = runCatching { searchYouTubeMusic(query) }.getOrDefault(emptyList())\n            val candidates = scItems + bcItems + ytItems
+            val ytItems = runCatching { searchYouTubeMusic(query) }.getOrDefault(emptyList())
+            val candidates = scItems + bcItems + ytItems
             val normalized = normalize(query)
             candidates.distinctBy { it.key }
                 .sortedByDescending { score(it, normalized) }
