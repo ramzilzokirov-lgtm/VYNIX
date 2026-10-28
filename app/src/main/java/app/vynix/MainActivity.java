@@ -178,6 +178,8 @@ public class MainActivity extends AppCompatActivity {
 
         buildShell();
         render();
+        refreshMini();
+        refreshMediaNotification();
         loadAccount();
     }
 
@@ -513,7 +515,7 @@ public class MainActivity extends AppCompatActivity {
                     LinearLayout row=new LinearLayout(MainActivity.this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(10),dp(10),dp(10),dp(10));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(7);targetResults.addView(row,rp);
                     String artwork=deezer?(x.optJSONObject("album")!=null?x.optJSONObject("album").optString("cover_medium",""): ""):x.optString("artworkUrl100","");
                     ImageView icon=new ImageView(MainActivity.this);icon.setScaleType(ImageView.ScaleType.CENTER_CROP);icon.setBackground(round(0xFF302638,13,0x33B89CFF,1));icon.setClipToOutline(true);icon.setImageDrawable(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF705174,0xFF29212F}));row.addView(icon,new LinearLayout.LayoutParams(dp(56),dp(56)));loadSearchArtwork(artwork,icon);
-                    LinearLayout info=new LinearLayout(MainActivity.this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(11),0,dp(6),0);info.addView(label(title,14,TEXT,true));info.addView(label(artist+(album.isEmpty()?"":" • "+album),11,MUTED,false));info.addView(label(x.optString("_source")+" • "+(preview.isEmpty()?"Прослушивание недоступно":archiveTrack?"▶ Полный трек":"▶ Превью в VYNIX"),10,GOLD,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));TextView play=label(preview.isEmpty()?"—":"▶",19,GOLD,true);row.addView(play);row.setAlpha(preview.isEmpty()?.72f:1f);row.setOnClickListener(v->{if(preview.isEmpty()){Toast.makeText(MainActivity.this,"Для этого результата нет доступного аудиофрагмента. Попробуй другую песню.",Toast.LENGTH_LONG).show();return;}Track onlineTrack=new Track(Uri.parse(preview),title+(artist.isEmpty()?"":" — "+artist));tracks.add(onlineTrack);playTrack(tracks.size()-1);});
+                    LinearLayout info=new LinearLayout(MainActivity.this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(11),0,dp(6),0);info.addView(label(title,14,TEXT,true));info.addView(label(artist+(album.isEmpty()?"":" • "+album),11,MUTED,false));info.addView(label(x.optString("_source")+" • "+(preview.isEmpty()?"Прослушивание недоступно":archiveTrack?"▶ Полный трек":"▶ Превью в VYNIX"),10,GOLD,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));TextView play=label(preview.isEmpty()?"—":"▶",19,GOLD,true);row.addView(play);row.setAlpha(preview.isEmpty()?.72f:1f);row.setOnClickListener(v->{if(preview.isEmpty()){Toast.makeText(MainActivity.this,"Для этого результата нет доступного аудиофрагмента. Попробуй другую песню.",Toast.LENGTH_LONG).show();return;}Track onlineTrack=new Track(Uri.parse(preview),title+(artist.isEmpty()?"":" — "+artist));int onlineIndex=-1;for(int i=0;i<tracks.size();i++){if(tracks.get(i).uri.equals(onlineTrack.uri)){onlineIndex=i;break;}}if(onlineIndex<0){tracks.add(onlineTrack);onlineIndex=tracks.size()-1;saveLocalTracks();}currentIndex=onlineIndex;playTrack(onlineIndex);});
                 }
             });
         });
@@ -755,6 +757,8 @@ public class MainActivity extends AppCompatActivity {
     private void syncLibrary(){
         apiExecutor.execute(()->{try{JSONArray items=new JSONArray();for(Track t:tracks){JSONObject item=new JSONObject();item.put("item_id",t.uri.toString());item.put("title",t.title);item.put("artist","");item.put("source","local");item.put("favorite",false);items.put(item);}JSONObject body=new JSONObject();body.put("items",items);apiRequest("/v1/library/"+accountId,"PUT",body);}catch(Exception ignored){}});
     }
+
+    @Override protected void onResume(){super.onResume();if(player!=null){refreshMini();syncPlaybackButtons();refreshMediaNotification();}}
 
     @Override protected void onDestroy(){apiExecutor.shutdownNow();if(player!=null)player.release();if(mediaSession!=null){mediaSession.setActive(false);mediaSession.release();}if(notificationManager!=null)notificationManager.cancel(PLAYBACK_NOTIFICATION_ID);super.onDestroy();}
 }
