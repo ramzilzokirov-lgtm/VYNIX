@@ -77,6 +77,8 @@ public class MainActivity extends AppCompatActivity {
         player = new ExoPlayer.Builder(this).build();
         player.addListener(new Player.Listener() {
             @Override public void onIsPlayingChanged(boolean isPlaying) { refreshMini(); }
+            @Override public void onPlaybackStateChanged(int playbackState) { refreshMini(); }
+            @Override public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) { refreshMini(); }
             @Override public void onMediaItemTransition(MediaItem item, int reason) { refreshMini(); }
         });
         audioPicker = registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
@@ -129,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(18), dp(2), dp(18), dp(22));
         scroller.addView(content); root.addView(scroller, new LinearLayout.LayoutParams(-1, 0, 1));
         mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE806A86, 38, 0x66E0B9F5, 1));
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); root.addView(mini, mp);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); mini.setVisibility(View.GONE); root.addView(mini, mp);
         TextView logo = label("♫", 25, GOLD, true); logo.setGravity(Gravity.CENTER); logo.setBackground(round(BG, 14, 0, 0)); mini.addView(logo, new LinearLayout.LayoutParams(dp(44), dp(44)));
         miniTitle = label("Выбери свою музыку", 13, TEXT, true); miniTitle.setSingleLine(true); miniTitle.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE); miniTitle.setMarqueeRepeatLimit(-1); LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(dp(10),0,0,0); info.addView(miniTitle); TextView sub=label("VYNIX • локальная библиотека",10,MUTED,false); info.addView(sub); mini.addView(info,new LinearLayout.LayoutParams(0,-2,1));
         playButton=label("▶",22,GOLD,true); playButton.setGravity(Gravity.CENTER); mini.addView(playButton,new LinearLayout.LayoutParams(dp(46),dp(46)));
@@ -463,7 +465,33 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void togglePlayback(){if(currentIndex<0){if(!tracks.isEmpty())playTrack(0);else chooseAudio();return;}if(player.isPlaying())player.pause();else player.play();refreshMini();}
-    private void refreshMini(){if(miniTitle==null)return;if(currentIndex>=0&&currentIndex<tracks.size()){String nextTitle=tracks.get(currentIndex).title;if(!nextTitle.contentEquals(miniTitle.getText())){miniTitle.animate().cancel();miniTitle.setAlpha(.55f);miniTitle.setTranslationY(dp(4));miniTitle.setText(nextTitle);miniTitle.animate().alpha(1f).translationY(0f).setDuration(220).setInterpolator(new DecelerateInterpolator(1.5f)).start();}}playButton.setText(player!=null&&player.isPlaying()?"Ⅱ":"▶");playButton.animate().cancel();playButton.setScaleX(.82f);playButton.setScaleY(.82f);playButton.animate().scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(new android.view.animation.OvershootInterpolator(1.5f)).start();}
+    private void refreshMini(){
+        if(miniTitle==null||mini==null||playButton==null)return;
+        boolean playing=player!=null&&player.isPlaying()&&currentIndex>=0&&currentIndex<tracks.size();
+        mini.animate().cancel();
+        if(playing){
+            if(mini.getVisibility()!=View.VISIBLE){
+                mini.setVisibility(View.VISIBLE);mini.setAlpha(0f);mini.setTranslationY(dp(10));
+                mini.animate().alpha(1f).translationY(0f).setDuration(220).setInterpolator(new DecelerateInterpolator(1.4f)).start();
+            }
+        }else if(mini.getVisibility()==View.VISIBLE){
+            mini.animate().alpha(0f).translationY(dp(7)).setDuration(140).withEndAction(()->{
+                if(mini!=null&&!(player!=null&&player.isPlaying())){
+                    mini.setVisibility(View.GONE);mini.setAlpha(1f);mini.setTranslationY(0f);
+                }
+            }).start();
+        }
+        if(currentIndex>=0&&currentIndex<tracks.size()){
+            String nextTitle=tracks.get(currentIndex).title;
+            if(!nextTitle.contentEquals(miniTitle.getText())){
+                miniTitle.animate().cancel();miniTitle.setAlpha(.55f);miniTitle.setTranslationY(dp(4));miniTitle.setText(nextTitle);
+                miniTitle.animate().alpha(1f).translationY(0f).setDuration(200).setInterpolator(new DecelerateInterpolator(1.3f)).start();
+            }
+        }
+        playButton.setText(playing?"Ⅱ":"▶");
+        playButton.animate().cancel();playButton.setScaleX(.88f);playButton.setScaleY(.88f);
+        playButton.animate().scaleX(1f).scaleY(1f).setDuration(170).setInterpolator(new android.view.animation.OvershootInterpolator(1.4f)).start();
+    }
     private String formatTime(long millis){if(millis<0||millis==androidx.media3.common.C.TIME_UNSET)return "0:00";long seconds=millis/1000;return (seconds/60)+":"+String.format(java.util.Locale.ROOT,"%02d",seconds%60);}
 
     private void showPlayer(){if(currentIndex<0){chooseAudio();return;}android.app.Dialog d=new android.app.Dialog(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(22),dp(12),dp(22),dp(24));box.setBackground(round(0xF515141E,30,0x44B89CFF,1));View handle=new View(this);handle.setBackground(round(0x66FFFFFF,4,0,0));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(dp(42),dp(4));hp.gravity=Gravity.CENTER;hp.bottomMargin=dp(15);box.addView(handle,hp);TextView close=label("⌄",24,MUTED,true);close.setGravity(Gravity.CENTER);box.addView(close,new LinearLayout.LayoutParams(-1,dp(28)));TextView overline=label("V Y N I X     /     NOW PLAYING",10,GOLD,true);overline.setGravity(Gravity.CENTER);LinearLayout.LayoutParams olp=new LinearLayout.LayoutParams(-1,-2);olp.topMargin=dp(8);box.addView(overline,olp);TextView art=label("♫",86,Color.WHITE,true);art.setGravity(Gravity.CENTER);GradientDrawable playerCover=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xFF80658B,0xFF322437});playerCover.setCornerRadius(dp(28));art.setBackground(playerCover);art.setElevation(dp(4));LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,dp(220));ap.setMargins(0,dp(16),0,dp(20));box.addView(art,ap);TextView title=label(tracks.get(currentIndex).title,22,TEXT,true);title.setGravity(Gravity.CENTER);title.setMaxLines(2);LinearLayout.LayoutParams titlep=new LinearLayout.LayoutParams(-1,-2);titlep.bottomMargin=dp(7);box.addView(title,titlep);TextView artist=label("ЛОКАЛЬНАЯ МУЗЫКА",10,MUTED,true);artist.setGravity(Gravity.CENTER);box.addView(artist);SeekBar seekBar=new SeekBar(this);seekBar.setMax(1000);seekBar.setProgressTintList(android.content.res.ColorStateList.valueOf(GOLD));seekBar.setThumbTintList(android.content.res.ColorStateList.valueOf(GOLD));seekBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF34313F));LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-1,dp(34));slp.setMargins(-dp(8),dp(18),-dp(8),0);box.addView(seekBar,slp);TextView time=label("0:00  /  0:00",11,MUTED,false);time.setGravity(Gravity.CENTER);box.addView(time);Handler progressHandler=new Handler(Looper.getMainLooper());Runnable progressTick=new Runnable(){@Override public void run(){if(!d.isShowing()||player==null)return;long duration=player.getDuration(),position=player.getCurrentPosition();if(duration>0&&!seekBar.isPressed())seekBar.setProgress((int)Math.min(1000,position*1000/duration));time.setText(formatTime(position)+"  /  "+formatTime(duration));progressHandler.postDelayed(this,500);}};seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar bar,int progress,boolean fromUser){if(fromUser){long duration=player.getDuration();if(duration>0)time.setText(formatTime(duration*progress/1000)+"  /  "+formatTime(duration));}}public void onStartTrackingTouch(SeekBar bar){}public void onStopTrackingTouch(SeekBar bar){long duration=player.getDuration();if(duration>0)player.seekTo(duration*bar.getProgress()/1000);}});LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER);controls.setPadding(0,dp(18),0,dp(12));box.addView(controls,new LinearLayout.LayoutParams(-1,dp(76)));
