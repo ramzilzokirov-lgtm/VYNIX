@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
@@ -357,8 +358,6 @@ private fun String.toColorOrNull(): Color? = try {
     val value = trim().removePrefix("#")
     if (value.length != 6) null else Color(android.graphics.Color.parseColor("#$value"))
 } catch (_: Exception) { null }
-
-@Composable
 
 @Composable
 private fun HomeScreen(favorites: Int, recent: Int, onOpen: (String) -> Unit, onPlay: () -> Unit) {
