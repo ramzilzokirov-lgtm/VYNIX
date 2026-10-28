@@ -381,7 +381,45 @@ public class MainActivity extends AppCompatActivity {
             List<JSONObject> found=new ArrayList<>();List<String> sources=new ArrayList<>();
             try{JSONObject deezer=getJson("https://api.deezer.com/search?q="+Uri.encode(q));JSONArray a=deezer.optJSONArray("data");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Deezer");x.put("_url",x.optString("link","https://www.deezer.com/search/"+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
             try{JSONObject itunes=getJson("https://itunes.apple.com/search?media=music&entity=song&limit=15&term="+Uri.encode(q));JSONArray a=itunes.optJSONArray("results");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Apple Music");x.put("_url",x.optString("trackViewUrl","https://music.apple.com/search?term="+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
-            try{JSONObject archive=getJson("https://archive.org/advancedsearch.php?q="+Uri.encode("title:(\""+q+"\") AND mediatype:audio")+"&fl[]=identifier&fl[]=title&fl[]=creator&rows=8&page=1&output=json");JSONObject response=archive.optJSONObject("response");JSONArray docs=response==null?null:response.optJSONArray("docs");if(docs!=null)for(int i=0;i<docs.length();i++){JSONObject doc=docs.optJSONObject(i);if(doc==null)continue;String identifier=doc.optString("identifier","");if(identifier.isEmpty())continue;try{JSONObject metadata=getJson("https://archive.org/metadata/"+Uri.encode(identifier));JSONArray files=metadata.optJSONArray("files");if(files==null)continue;for(int k=0;k<files.length();k++){JSONObject file=files.optJSONObject(k);if(file==null)continue;String name=file.optString("name","");String format=file.optString("format","").toLowerCase(java.util.Locale.US);if((name.toLowerCase(java.util.Locale.US).endsWith(".mp3")||name.toLowerCase(java.util.Locale.US).endsWith(".ogg")||name.toLowerCase(java.util.Locale.US).endsWith(".m4a"))&&(format.contains("mp3")||format.contains("ogg")||format.contains("aac")||format.contains("m4a")||format.contains("audio"))){JSONObject item=new JSONObject();String creator=doc.optString("creator","");if(creator.startsWith("[")&&creator.endsWith("]"))creator=creator.substring(1,creator.length()-1);item.put("title",doc.optString("title","Без названия"));item.put("artist",new JSONObject().put("name",creator));item.put("album",new JSONObject().put("title","Internet Archive"));item.put("_source","Internet Archive");item.put("_full_audio",true);item.put("_url","https://archive.org/download/"+Uri.encode(identifier)+"/"+Uri.encode(name));found.add(item);break;}}catch(Exception ignored){}}}catch(Exception ignored){}
+            try {
+                JSONObject archive = getJson("https://archive.org/advancedsearch.php?q=" + Uri.encode("title:(" + q + ") AND mediatype:audio") + "&fl[]=identifier&fl[]=title&fl[]=creator&rows=8&page=1&output=json");
+                JSONObject response = archive.optJSONObject("response");
+                JSONArray docs = response == null ? null : response.optJSONArray("docs");
+                if (docs != null) {
+                    for (int i = 0; i < docs.length(); i++) {
+                        JSONObject doc = docs.optJSONObject(i);
+                        if (doc == null) continue;
+                        String identifier = doc.optString("identifier", "");
+                        if (identifier.isEmpty()) continue;
+                        try {
+                            JSONObject metadata = getJson("https://archive.org/metadata/" + Uri.encode(identifier));
+                            JSONArray files = metadata.optJSONArray("files");
+                            if (files == null) continue;
+                            for (int k = 0; k < files.length(); k++) {
+                                JSONObject file = files.optJSONObject(k);
+                                if (file == null) continue;
+                                String name = file.optString("name", "");
+                                String lower = name.toLowerCase(java.util.Locale.US);
+                                String format = file.optString("format", "").toLowerCase(java.util.Locale.US);
+                                boolean audioName = lower.endsWith(".mp3") || lower.endsWith(".ogg") || lower.endsWith(".m4a");
+                                boolean audioFormat = format.contains("mp3") || format.contains("ogg") || format.contains("aac") || format.contains("m4a") || format.contains("audio");
+                                if (audioName && audioFormat) {
+                                    JSONObject item = new JSONObject();
+                                    String creator = doc.optString("creator", "");
+                                    item.put("title", doc.optString("title", "Без названия"));
+                                    item.put("artist", new JSONObject().put("name", creator));
+                                    item.put("album", new JSONObject().put("title", "Internet Archive"));
+                                    item.put("_source", "Internet Archive");
+                                    item.put("_full_audio", true);
+                                    item.put("_url", "https://archive.org/download/" + Uri.encode(identifier) + "/" + Uri.encode(name));
+                                    found.add(item);
+                                    break;
+                                }
+                            }
+                        } catch (Exception ignored) { }
+                    }
+                }
+            } catch (Exception ignored) { }
             runOnUiThread(()->{
                 if(!"Поиск".equals(activeTab)||targetResults==null||searchResults!=targetResults||!q.equals(lastSearch))return;targetResults.removeAllViews();
                 if(found.isEmpty()){addSearchMessage("Не удалось получить результаты из открытых каталогов. Проверь интернет или выбери сервис выше.");return;}
