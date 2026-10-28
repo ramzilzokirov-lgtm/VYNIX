@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.media3.common.MediaItem
@@ -242,7 +243,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     }
 }
 
-private fun Int.spCompat() = androidx.compose.ui.unit.sp
+private fun Int.spCompat() = this.sp
 
 @Composable
 private fun PermissionScreen(onRequest: () -> Unit) {
