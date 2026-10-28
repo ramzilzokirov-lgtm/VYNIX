@@ -473,7 +473,9 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
                                 }
                                 onPlayTrack(track.copy(uri = Uri.parse(stream), isPreview = false))
                             } catch (e: Exception) {
-                                error = "Не удалось открыть YouTube Music: " + (e.message ?: "неизвестная ошибка")
+                                error = "Не удалось запустить трек: " + (e.message ?: e.javaClass.simpleName).take(220)
+                            } catch (e: LinkageError) {
+                                error = "Ошибка музыкального модуля: " + (e.message ?: e.javaClass.simpleName).take(180)
                             } finally { playingId = null }
                         }
                     }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
