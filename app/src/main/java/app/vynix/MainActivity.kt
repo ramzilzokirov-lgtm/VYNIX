@@ -537,8 +537,9 @@ private fun searchMusicServices(query: String): List<AudioTrack> {
     val cleaned = query.trim().replace(Regex("[\\\\/:()\\[\\]{}]"), " ").replace(Regex("\\s+"), " ")
     if (cleaned.length < 2) return emptyList()
 
-    val lucene = "mediatype:audio AND (title:\\"\${cleaned}\\" OR creator:\\"\${cleaned}\\") AND (licenseurl:*creativecommons.org* OR licenseurl:*publicdomain*)"
-    val searchUrl = "https://archive.org/advancedsearch.php?q=\${URLEncoder.encode(lucene, "UTF-8")}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=licenseurl&rows=18&page=1&output=json"
+    val lucene = "mediatype:audio AND (title:\\"${cleaned}\\" OR creator:\\"${cleaned}\\") AND (licenseurl:*creativecommons.org* OR licenseurl:*publicdomain*)"
+    val encodedQuery = URLEncoder.encode(lucene, "UTF-8")
+    val searchUrl = "https://archive.org/advancedsearch.php?q=$encodedQuery&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=licenseurl&rows=18&page=1&output=json"
     val connection = (URL(searchUrl).openConnection() as HttpURLConnection).apply {
         connectTimeout = 8000
         readTimeout = 12000
