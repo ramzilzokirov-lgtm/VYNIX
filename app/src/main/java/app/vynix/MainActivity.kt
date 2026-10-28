@@ -62,6 +62,15 @@ private val SurfaceB = Color(0xFF282235)
 private val Lilac = Color(0xFFCE9BFF)
 private val Muted = Color(0xFFA8A1B7)
 private val White = Color(0xFFF8F4FF)
+private val BackgroundPalettes = listOf(
+    Triple("Лавандовый", 0xFF6A3C8B, 0xFF100E17),
+    Triple("Бирюзовый", 0xFF087E8B, 0xFF081317),
+    Triple("Рубиновый", 0xFF8B2635, 0xFF160B12),
+    Triple("Золотой", 0xFF8A6428, 0xFF15110A),
+    Triple("Синий лёд", 0xFF315C9B, 0xFF0B101A),
+    Triple("Изумрудный", 0xFF28734E, 0xFF09140F),
+    Triple("Чёрный", 0xFF484452, 0xFF08080B)
+)
 
 data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве") {
     val key: String get() = uri.toString()
@@ -115,10 +124,32 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var addTarget by remember { mutableStateOf<AudioTrack?>(null) }
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
-    val ambientTransition = rememberInfiniteTransition(label = "ambient-background")
-    val ambientAlpha by ambientTransition.animateFloat(initialValue = 0.10f, targetValue = 0.30f, animationSpec = infiniteRepeatable(animation = tween(4200), repeatMode = RepeatMode.Reverse), label = "ambient-glow")
+    var showAppearance by remember { mutableStateOf(false) }
+    var paletteIndex by remember { mutableIntStateOf(0) }
+    var customTopHex by remember { mutableStateOf("") }
+    var animationEnabled by remember { mutableStateOf(true) }
+    var animationSpeed by remember { mutableFloatStateOf(1f) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("vynix_compose_state", 0) }
+    val ambientTransition = rememberInfiniteTransition(label = "ambient-background")
+    val ambientAlpha by ambientTransition.animateFloat(initialValue = 0.08f, targetValue = if (animationEnabled) 0.28f else 0.08f, animationSpec = infiniteRepeatable(animation = tween((4200 / animationSpeed.coerceIn(0.5f, 2f)).toInt()), repeatMode = RepeatMode.Reverse), label = "ambient-glow")
+    val selectedPalette = BackgroundPalettes[paletteIndex.coerceIn(0, BackgroundPalettes.lastIndex)]
+    val baseTop = remember(paletteIndex, customTopHex) { customTopHex.toColorOrNull() ?: Color(selectedPalette.second) }
+    val baseBottom = Color(selectedPalette.third)
+    val backgroundColor = baseBottom
+    val glowColor = baseTop
+    LaunchedEffect(Unit) {
+        paletteIndex = prefs.getInt("background_palette", 0).coerceIn(0, BackgroundPalettes.lastIndex)
+        customTopHex = prefs.getString("background_custom_hex", "") ?: ""
+        animationEnabled = prefs.getBoolean("background_animation", true)
+        animationSpeed = prefs.getFloat("background_speed", 1f).coerceIn(0.5f, 2f)
+    }
+    fun saveAppearance() {
+        prefs.edit().putInt("background_palette", paletteIndex)
+            .putString("background_custom_hex", customTopHex)
+            .putBoolean("background_animation", animationEnabled)
+            .putFloat("background_speed", animationSpeed).apply()
+    }
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         permissionGranted = granted
@@ -216,9 +247,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         else -> tracks
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(background = Ink, surface = SurfaceA, primary = Lilac, onPrimary = Ink, onBackground = White, onSurface = White, secondary = Muted)) {
-        Scaffold(containerColor = Ink, bottomBar = {
-            Column(Modifier.background(Ink)) {
+    MaterialTheme(colorScheme = darkColorScheme(background = backgroundColor, surface = SurfaceA, primary = Lilac, onPrimary = Ink, onBackground = White, onSurface = White, secondary = Muted)) {
+        Scaffold(containerColor = backgroundColor, bottomBar = {
+            Column(Modifier.background(backgroundColor)) {
                 if (currentPlayer?.currentMediaItem != null) {
                     MiniPlayer(currentTitle, currentArtist, isPlaying, position, duration,
                         onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer?.play() },
@@ -232,13 +263,13 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                 }
             }
         }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).background(Brush.verticalGradient(listOf(Color(0xFF6A3C8B).copy(alpha = ambientAlpha), Ink, Color(0xFF17121F)))) ) {
+            Column(Modifier.fillMaxSize().padding(padding).background(Brush.verticalGradient(listOf(glowColor.copy(alpha = ambientAlpha), backgroundColor, backgroundColor.copy(red = (backgroundColor.red * 0.72f), green = (backgroundColor.green * 0.72f), blue = (backgroundColor.blue * 0.72f))))) ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("VYNIX", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = White)
                         Text("YOUR SOUND. YOUR SPACE.", style = MaterialTheme.typography.labelSmall, color = Lilac, letterSpacing = 2.spCompat())
                     }
-                    Box(Modifier.size(44.dp).clip(CircleShape).background(SurfaceB), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(25.dp)) }
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(SurfaceB).clickable { showAppearance = true }, contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Palette, "Настроить фон", tint = Lilac, modifier = Modifier.size(25.dp)) }
                 }
                 when {
                     !permissionGranted -> PermissionScreen { permissionLauncher.launch(permission) }
@@ -263,6 +294,70 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         }
     }
 
+    if (showAppearance) {
+        AlertDialog(
+            onDismissRequest = { showAppearance = false },
+            containerColor = SurfaceA,
+            title = { Text("Живой фон VYNIX", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Цветовая тема", color = Muted)
+                    BackgroundPalettes.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { item ->
+                                val index = BackgroundPalettes.indexOf(item)
+                                val selected = paletteIndex == index && customTopHex.isBlank()
+                                Surface(
+                                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable {
+                                        paletteIndex = index
+                                        customTopHex = ""
+                                        saveAppearance()
+                                    },
+                                    color = Color(item.second),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, if (selected) Lilac else White.copy(alpha = .18f))
+                                ) {
+                                    Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(Modifier.fillMaxWidth().height(18.dp).clip(RoundedCornerShape(7.dp)).background(Brush.horizontalGradient(listOf(Color(item.second), Color(item.third)))))
+                                        Text(item.first, color = White, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                    }
+                                }
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    OutlinedTextField(
+                        value = customTopHex,
+                        onValueChange = { value -> customTopHex = value.filter { it.isLetterOrDigit() || it == '#' }.take(7); saveAppearance() },
+                        label = { Text("Свой цвет HEX") },
+                        placeholder = { Text("#6A3C8B") },
+                        singleLine = true,
+                        supportingText = { Text("Например, #A46CFF", color = Muted) }
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Живая анимация")
+                            Text("Плавные световые переливы", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = animationEnabled, onCheckedChange = { animationEnabled = it; saveAppearance() })
+                    }
+                    Text("Скорость анимации: ${String.format(java.util.Locale.US, "%.1f", animationSpeed)}×", color = Muted)
+                    Slider(value = animationSpeed, onValueChange = { animationSpeed = it }, onValueChangeFinished = { saveAppearance() }, valueRange = 0.5f..2f, steps = 2)
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(listOf(glowColor.copy(alpha = .85f), backgroundColor))).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.AutoAwesome, null, tint = White)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Предпросмотр", color = White, fontWeight = FontWeight.Bold)
+                            Text("Градиент применяется сразу", color = White.copy(alpha = .8f), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { saveAppearance(); showAppearance = false }) { Text("Готово") } },
+            dismissButton = { TextButton(onClick = { showAppearance = false }) { Text("Закрыть") } }
+        )
+    }
+
     if (createPlaylist) AlertDialog(onDismissRequest = { createPlaylist = false }, containerColor = SurfaceA, title = { Text("Новый плейлист") }, text = { OutlinedTextField(value = playlistName, onValueChange = { playlistName = it }, placeholder = { Text("Название") }, singleLine = true) }, confirmButton = { TextButton(onClick = { val name = playlistName.trim(); if (name.isNotEmpty()) { playlists = playlists + (name to (playlists[name] ?: emptyList())); saveState(); selectedPlaylist = name; tab = "Плейлисты" }; playlistName = ""; createPlaylist = false }) { Text("Создать") } }, dismissButton = { TextButton(onClick = { createPlaylist = false }) { Text("Отмена") } })
     addTarget?.let { track ->
         AlertDialog(onDismissRequest = { addTarget = null }, containerColor = SurfaceA, title = { Text("Добавить в плейлист") }, text = {
@@ -273,6 +368,11 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 }
 
 private fun Int.spCompat() = this.sp
+
+private fun String.toColorOrNull(): Color? = try {
+    val value = trim().removePrefix("#")
+    if (value.length != 6) null else Color(android.graphics.Color.parseColor("#$value"))
+} catch (_: Exception) { null }
 
 @Composable
 private fun PermissionScreen(onRequest: () -> Unit) {
