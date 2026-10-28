@@ -68,7 +68,7 @@ private val BackgroundPalettes = listOf(
 )
 
 data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве", val isPreview: Boolean = false) {
-    val key: String get() = uri.toString()
+    val key: String get() = if (source.startsWith("Яндекс Музыка")) "yandex:$id" else uri.toString()
 }
 
 class MainActivity : ComponentActivity() {
@@ -109,6 +109,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var tracks by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var tab by remember { mutableStateOf("Главная") }
     var search by remember { mutableStateOf("") }
+    var yandexToken by remember { mutableStateOf("") }
     var onlineResults by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var searchingOnline by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(setOf<String>()) }
@@ -135,6 +136,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     val backgroundColor = baseBottom
     val glowColor = baseTop
     LaunchedEffect(Unit) {
+        yandexToken = withContext(Dispatchers.IO) { readYandexToken(context) }
         paletteIndex = prefs.getInt("background_palette", 0).coerceIn(0, BackgroundPalettes.lastIndex)
         customTopHex = prefs.getString("background_custom_hex", "") ?: ""
         animationEnabled = prefs.getBoolean("background_animation", true)
@@ -266,6 +268,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                         Spacer(Modifier.height(10.dp))
                         OpenAudioSearch(
                             query = search,
+                            token = yandexToken,
+                            onTokenChange = { token -> yandexToken = token; kotlinx.coroutines.MainScope().launch(Dispatchers.IO) { saveYandexToken(context, token) } },
                             onPlayTrack = { track -> onPlay(listOf(track), 0) }
                         )
                     }
@@ -366,23 +370,29 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 
 
 @Composable
-private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
+private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String) -> Unit, onPlayTrack: (AudioTrack) -> Unit) {
     var results by remember { mutableStateOf<List<AudioTrack>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var retryCounter by remember { mutableIntStateOf(0) }
-    LaunchedEffect(query, retryCounter) {
-        val normalized = query.trim()
-        if (normalized.length < 2) { results = emptyList(); error = null; loading = false; return@LaunchedEffect }
+    var retry by remember { mutableIntStateOf(0) }
+    var showConnect by remember { mutableStateOf(false) }
+    var tokenDraft by remember { mutableStateOf(token) }
+    var playingId by remember { mutableStateOf<Long?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(token) { tokenDraft = token }
+    LaunchedEffect(query, token, retry) {
+        val q = query.trim()
+        if (q.length < 2) { results = emptyList(); error = null; loading = false; return@LaunchedEffect }
+        if (token.isBlank()) { results = emptyList(); error = "Подключи аккаунт Яндекс Музыки для поиска полных треков."; loading = false; return@LaunchedEffect }
         kotlinx.coroutines.delay(350)
         loading = true; error = null
         try {
-            results = withContext(Dispatchers.IO) { searchAudiusTracks(normalized) }
-            if (results.isEmpty()) error = "Audius не нашёл доступных для потокового воспроизведения треков. Попробуй другое название или проверь соединение."
+            results = withContext(Dispatchers.IO) { searchYandexTracks(q, token) }
+            if (results.isEmpty()) error = "Яндекс Музыка не нашла треки по этому запросу."
         } catch (e: Exception) {
-            error = if (e.message?.contains("timeout", true) == true || e.message?.contains("timed out", true) == true)
-                "Audius отвечает слишком долго. Проверь соединение и повтори поиск."
-            else "Не удалось подключиться к Audius. Проверь соединение и повтори поиск."
+            error = if (e.message?.contains("401") == true || e.message?.contains("403") == true)
+                "Яндекс отклонил авторизацию. Переподключи аккаунт."
+            else "Не удалось получить каталог Яндекс Музыки. Повтори поиск."
             results = emptyList()
         } finally { loading = false }
     }
@@ -390,9 +400,10 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Поиск музыки", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Audius · потоковое воспроизведение · без аккаунта", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Яндекс Музыка", color = White, fontWeight = FontWeight.SemiBold)
+                Text(if (token.isBlank()) "Аккаунт не подключён" else "Каталог Яндекс Музыки · плеер VYNIX", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
+            TextButton(onClick = { tokenDraft = token; showConnect = true }) { Text(if (token.isBlank()) "Подключить" else "Аккаунт", color = Lilac) }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
         when {
@@ -401,12 +412,25 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
                     Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp)); Spacer(Modifier.height(10.dp))
                     Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
                     Text("Введи название песни или исполнителя", color = Muted)
+                    if (token.isBlank()) TextButton(onClick = { showConnect = true }) { Text("Подключить Яндекс Музыку", color = Lilac) }
                 }
             }
             results.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(results, key = { it.key }) { track ->
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable { onPlayTrack(track) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(model = track.artworkUrl, contentDescription = "Обложка ${track.title}", modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp)))
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable {
+                        if (playingId != track.id) scope.launch {
+                            playingId = track.id; error = null
+                            try {
+                                val stream = withContext(Dispatchers.IO) { resolveYandexStream(track.id, token) }
+                                onPlayTrack(track.copy(uri = Uri.parse(stream)))
+                            } catch (e: Exception) {
+                                error = if (e.message?.contains("preview", true) == true)
+                                    "Яндекс вернул только фрагмент. VYNIX не запускает 30-секундные превью."
+                                else "Полный поток недоступен для этого трека или аккаунта."
+                            } finally { playingId = null }
+                        }
+                    }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(model = track.artworkUrl, contentDescription = "Обложка " + track.title, modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp)))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(track.title, color = White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -415,7 +439,8 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
                             Text(track.source, color = Lilac, style = MaterialTheme.typography.labelSmall)
                             if (track.duration > 0L) Text(formatPlayerTime(track.duration), color = Muted, style = MaterialTheme.typography.labelSmall)
                         }
-                        Icon(Icons.Rounded.PlayCircle, contentDescription = "Воспроизвести трек", tint = Lilac, modifier = Modifier.size(32.dp))
+                        if (playingId == track.id) CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp, color = Lilac)
+                        else Icon(Icons.Rounded.PlayCircle, "Воспроизвести трек", tint = Lilac, modifier = Modifier.size(32.dp))
                     }
                 }
             }
@@ -424,39 +449,120 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.CloudOff, null, tint = Muted, modifier = Modifier.size(42.dp)); Spacer(Modifier.height(10.dp))
                     Text(error ?: "", color = Muted)
-                    TextButton(onClick = { results = emptyList(); error = null; retryCounter++ }) { Text("Повторить поиск", color = Lilac) }
+                    if (token.isBlank()) TextButton(onClick = { showConnect = true }) { Text("Подключить аккаунт", color = Lilac) }
+                    else TextButton(onClick = { retry++; error = null }) { Text("Повторить поиск", color = Lilac) }
                 }
             }
         }
     }
+    if (showConnect) AlertDialog(
+        onDismissRequest = { showConnect = false }, containerColor = SurfaceA,
+        title = { Text("Подключение Яндекс Музыки", color = White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Вставь токен своего аккаунта. Он хранится зашифрованным на этом устройстве и отправляется только серверам Яндекса. Не отправляй токен в чат.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = tokenDraft, onValueChange = { tokenDraft = it.trim() }, modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Токен аккаунта Яндекса") }, singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
+                if (token.isNotBlank()) TextButton(onClick = { onTokenChange(""); tokenDraft = ""; showConnect = false }) { Text("Отключить аккаунт", color = Color(0xFFFF8A80)) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onTokenChange(tokenDraft.trim()); showConnect = false; retry++ }, enabled = tokenDraft.trim().isNotBlank()) { Text("Сохранить", color = Lilac) } },
+        dismissButton = { TextButton(onClick = { showConnect = false }) { Text("Отмена", color = Muted) } }
+    )
 }
 
-private fun searchAudiusTracks(query: String): List<AudioTrack> {
+private fun searchYandexTracks(query: String, token: String): List<AudioTrack> {
     val encoded = URLEncoder.encode(query.trim(), "UTF-8")
-    val url = URL("https://api.audius.co/v1/tracks/search?query=$encoded&limit=25&app_name=VYNIX")
-    val connection = (url.openConnection() as HttpURLConnection).apply {
+    val connection = (URL("https://api.music.yandex.net/search?text=$encoded&type=track&page=0").openConnection() as HttpURLConnection).apply {
         connectTimeout = 9000; readTimeout = 15000; requestMethod = "GET"
         setRequestProperty("User-Agent", "VYNIX-Android/2.2"); setRequestProperty("Accept", "application/json")
+        setRequestProperty("Authorization", "OAuth $token")
     }
     return try {
         val status = connection.responseCode
-        if (status !in 200..299) throw IllegalStateException("Audius HTTP $status")
+        if (status !in 200..299) throw IllegalStateException("Yandex HTTP " + status)
         val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-        val data = root.optJSONArray("data") ?: JSONArray()
-        (0 until data.length()).mapNotNull { index ->
-            val item = data.optJSONObject(index) ?: return@mapNotNull null
-            val id = item.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
-            if (!item.optBoolean("is_streamable", true)) return@mapNotNull null
+        val arr = root.optJSONObject("result")?.optJSONObject("tracks")?.optJSONArray("results") ?: JSONArray()
+        (0 until arr.length()).mapNotNull { i ->
+            val item = arr.optJSONObject(i) ?: return@mapNotNull null
+            val id = item.optString("id").toLongOrNull() ?: return@mapNotNull null
             val title = item.optString("title").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
-            val artist = item.optJSONObject("user")?.optString("name")?.takeIf { it.isNotBlank() && it != "null" } ?: "Неизвестный исполнитель"
-            val artwork = item.optJSONObject("artwork")
-            val artworkUrl = artwork?.optString("480x480")?.takeIf { it.startsWith("http") } ?: artwork?.optString("150x150")?.takeIf { it.startsWith("http") }
-            AudioTrack(id = id.hashCode().toLong(), uri = Uri.parse("https://api.audius.co/v1/tracks/$id/stream?app_name=VYNIX"),
-                title = title, artist = artist, album = item.optString("genre").takeIf { it.isNotBlank() && it != "null" } ?: "",
-                duration = item.optLong("duration", 0L).coerceAtLeast(0L) * 1000L, artworkUrl = artworkUrl,
-                source = "Audius · полный трек", isPreview = false)
-        }.distinctBy { it.key }
+            val artists = item.optJSONArray("artists")
+            val artist = if (artists != null) (0 until artists.length()).mapNotNull { artists.optJSONObject(it)?.optString("name")?.takeIf(String::isNotBlank) }.joinToString(", ") else ""
+            val album = item.optJSONArray("albums")?.optJSONObject(0)
+            val albumId = album?.optString("id") ?: ""
+            val cover = album?.optString("coverUri")?.takeIf { it.isNotBlank() && it != "null" }?.replace("%%", "400x400")
+            AudioTrack(id, Uri.parse("https://music.yandex.ru/album/$albumId/track/$id"), title, artist.ifBlank { "Неизвестный исполнитель" },
+                album?.optString("title") ?: "", item.optLong("durationMs", 0L).coerceAtLeast(0L),
+                cover?.let { if (it.startsWith("http")) it else "https://$it" }, "Яндекс Музыка", false)
+        }.distinctBy { it.id }
     } finally { connection.disconnect() }
+}
+
+private fun resolveYandexStream(trackId: Long, token: String): String {
+    val connection = (URL("https://api.music.yandex.net/tracks/$trackId/download-info").openConnection() as HttpURLConnection).apply {
+        connectTimeout = 9000; readTimeout = 15000; requestMethod = "GET"
+        setRequestProperty("User-Agent", "VYNIX-Android/2.2"); setRequestProperty("Authorization", "OAuth $token")
+    }
+    val infoUrl = try {
+        val status = connection.responseCode
+        if (status !in 200..299) throw IllegalStateException("Yandex HTTP " + status)
+        val arr = JSONObject(connection.inputStream.bufferedReader().use { it.readText() }).optJSONArray("result") ?: JSONArray()
+        (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+            .filter { !it.optBoolean("preview", false) && it.optString("downloadInfoUrl").startsWith("http") }
+            .maxByOrNull { it.optInt("bitrateInKbps", 0) }?.optString("downloadInfoUrl")
+            ?: throw IllegalStateException("preview only")
+    } finally { connection.disconnect() }
+    val xmlConnection = (URL(infoUrl).openConnection() as HttpURLConnection).apply { connectTimeout = 9000; readTimeout = 15000 }
+    val xml = try {
+        val status = xmlConnection.responseCode
+        if (status !in 200..299) throw IllegalStateException("Yandex stream info HTTP " + status)
+        xmlConnection.inputStream.bufferedReader().use { it.readText() }
+    } finally { xmlConnection.disconnect() }
+    fun tag(name: String): String = Regex("<$name>([^<]+)</$name>").find(xml)?.groupValues?.get(1)
+        ?: throw IllegalStateException("Missing Yandex stream field " + name)
+    val host = tag("host"); val path = tag("path"); val ts = tag("ts"); val salt = tag("s")
+    val value = "XGRlBW9FXlekgbPrRHuSiA" + path.removePrefix("/") + salt
+    val digest = java.security.MessageDigest.getInstance("MD5").digest(value.toByteArray(Charsets.UTF_8))
+    val sign = digest.joinToString("") { "%02x".format(it) }
+    return "https://$host/get-mp3/$sign/$ts$path"
+}
+
+private fun readYandexToken(context: android.content.Context): String {
+    val prefs = context.getSharedPreferences("vynix_yandex_auth", android.content.Context.MODE_PRIVATE)
+    val encrypted = prefs.getString("token", null) ?: return ""
+    return try {
+        val bytes = android.util.Base64.decode(encrypted, android.util.Base64.NO_WRAP)
+        val iv = bytes.copyOfRange(0, 12); val ciphertext = bytes.copyOfRange(12, bytes.size)
+        val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val key = store.getKey("vynix_yandex_token_key", null) as javax.crypto.SecretKey
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.GCMParameterSpec(128, iv))
+        String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    } catch (_: Exception) { prefs.edit().remove("token").apply(); "" }
+}
+
+private fun saveYandexToken(context: android.content.Context, token: String) {
+    val prefs = context.getSharedPreferences("vynix_yandex_auth", android.content.Context.MODE_PRIVATE)
+    if (token.isBlank()) { prefs.edit().remove("token").apply(); return }
+    val alias = "vynix_yandex_token_key"
+    val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    var key = store.getKey(alias, null) as? javax.crypto.SecretKey
+    if (key == null) {
+        val generator = javax.crypto.KeyGenerator.getInstance(android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        val spec = android.security.keystore.KeyGenParameterSpec.Builder(alias,
+            android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true).build()
+        generator.init(spec); key = generator.generateKey()
+    }
+    val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
+    val encrypted = cipher.iv + cipher.doFinal(token.toByteArray(Charsets.UTF_8))
+    prefs.edit().putString("token", android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP)).apply()
 }
 
 private fun Int.spCompat() = this.sp
