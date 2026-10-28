@@ -188,6 +188,11 @@ public class MainActivity extends AppCompatActivity {
             content.addView(recs);gap(16);
             sectionTitle("Недавно добавлено","Все",()->{activeTab="Медиатека";render();buildNavSelection();});
             if(tracks.isEmpty()) empty("Здесь пока тихо","Добавь локальные аудиофайлы, чтобы начать."); else for(int i=tracks.size()-1;i>=0;i--)trackRow(tracks.get(i),i);
+        } else if(activeTab.equals("Недавние")) {
+            pageTitle("Недавние","Треки, которые доступны в этой сессии");
+            if(currentIndex>=0&&currentIndex<tracks.size()){sectionTitle("Продолжить слушать",null,null);trackRow(tracks.get(currentIndex),currentIndex);gap(12);}
+            sectionTitle("Твоя музыка","Обновить",()->render());
+            if(tracks.isEmpty())empty("Пока нет недавних треков","Найди музыку или добавь аудиофайл.");else for(int i=tracks.size()-1;i>=0;i--)trackRow(tracks.get(i),i);
         } else if(activeTab.equals("Медиатека")) {
             addText("Медиатека",30,TEXT,true); addText("ТВОЯ КОЛЛЕКЦИЯ",10,GOLD,true); gap(14);
             LinearLayout cards=new LinearLayout(this); cards.setOrientation(LinearLayout.HORIZONTAL);
@@ -253,7 +258,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout card=new LinearLayout(this);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(dp(10),dp(8),dp(8),dp(8));card.setBackground(round(0xFF251F2B,22,0x443E3545,1));
         TextView glyph=label(icon,19,GOLD,true);glyph.setGravity(Gravity.CENTER);card.addView(glyph,new LinearLayout.LayoutParams(dp(30),dp(42)));
         LinearLayout texts=new LinearLayout(this);texts.setOrientation(LinearLayout.VERTICAL);texts.setPadding(dp(5),0,0,0);texts.addView(label(title,13,TEXT,true));texts.addView(label(subtitle,10,MUTED,false));card.addView(texts,new LinearLayout.LayoutParams(0,-2,1));
-        card.setOnClickListener(v->{if(index==0){activeTab="Медиатека";render();buildNavSelection();}else Toast.makeText(this,"Избранное появится вместе с сохранением любимых треков",Toast.LENGTH_SHORT).show();});
+        card.setOnClickListener(v->{if(index==0){activeTab="Недавние";render();buildNavSelection();}else Toast.makeText(this,"Избранное появится вместе с сохранением любимых треков",Toast.LENGTH_SHORT).show();});
         return card;
     }
 
