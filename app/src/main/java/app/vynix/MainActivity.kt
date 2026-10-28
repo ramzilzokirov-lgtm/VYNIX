@@ -437,10 +437,11 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
         try {
             results = withContext(Dispatchers.IO) { searchMultiSourceTracks(q) }
             onResultsChange(results)
-            if (results.isEmpty()) error = "Ничего не найдено. Попробуй название и исполнителя."
-        } catch (_: Exception) {
-            error = "Музыкальные источники временно недоступны. Попробуй ещё раз."
+            if (results.isEmpty()) error = "YouTube Music не вернул результаты. Попробуй другой запрос."
+        } catch (e: Exception) {
+            error = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось выполнить поиск в YouTube Music."
             results = emptyList()
+            onResultsChange(emptyList())
         } finally { loading = false }
     }
     Column(Modifier.fillMaxSize()) {
@@ -507,7 +508,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
 }
 
 private fun searchMultiSourceTracks(query: String): List<AudioTrack> =
-    runCatching { NuclearStyleSearch.search(query) }.getOrDefault(emptyList())
+    NuclearStyleSearch.search(query)
 
 private fun Int.spCompat() = this.sp
 
