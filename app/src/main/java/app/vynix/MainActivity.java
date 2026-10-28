@@ -44,9 +44,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
-    private static final int BG = Color.rgb(23, 15, 24), PANEL = Color.rgb(43, 34, 46), PANEL2 = Color.rgb(52, 42, 55);
-    private int GOLD = Color.rgb(184, 156, 255);
-    private static final int TEXT = Color.rgb(246, 238, 248), MUTED = Color.rgb(174, 158, 178);
+    private static final int BG = Color.rgb(24, 14, 31), PANEL = Color.rgb(48, 31, 57), PANEL2 = Color.rgb(65, 42, 75);
+    private int GOLD = Color.rgb(220, 166, 255);
+    private static final int TEXT = Color.rgb(255, 246, 255), MUTED = Color.rgb(202, 178, 211);
     private final List<Track> tracks = new ArrayList<>();
     private ExoPlayer player;
     private LinearLayout root, content, mini;
@@ -130,7 +130,7 @@ public class MainActivity extends AppCompatActivity {
         ScrollView scroller = new ScrollView(this); scroller.setFillViewport(true);
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(18), dp(2), dp(18), dp(22));
         scroller.addView(content); root.addView(scroller, new LinearLayout.LayoutParams(-1, 0, 1));
-        mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE806A86, 38, 0x66E0B9F5, 1));
+        mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE6D4C7D, 38, 0x88E4B7FF, 1));
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); mini.setVisibility(View.GONE); root.addView(mini, mp);
         TextView logo = label("♫", 25, GOLD, true); logo.setGravity(Gravity.CENTER); logo.setBackground(round(BG, 14, 0, 0)); mini.addView(logo, new LinearLayout.LayoutParams(dp(44), dp(44)));
         miniTitle = label("Выбери свою музыку", 13, TEXT, true); miniTitle.setSingleLine(true); miniTitle.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE); miniTitle.setMarqueeRepeatLimit(-1); LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(dp(10),0,0,0); info.addView(miniTitle); TextView sub=label("VYNIX • локальная библиотека",10,MUTED,false); info.addView(sub); mini.addView(info,new LinearLayout.LayoutParams(0,-2,1));
@@ -165,15 +165,15 @@ public class MainActivity extends AppCompatActivity {
             addText("волна", 38, TEXT, true);
             TextView bell=label("♧",25,GOLD,true);bell.setGravity(Gravity.CENTER);LinearLayout.LayoutParams bellp=new LinearLayout.LayoutParams(dp(42),dp(42));bellp.gravity=Gravity.END;bellp.topMargin=-dp(86);content.addView(bell,bellp);bell.setOnClickListener(v->showProfileOption("Уведомления"));
             gap(12);
-            LinearLayout collage=new LinearLayout(this);collage.setGravity(Gravity.CENTER_VERTICAL);collage.setOrientation(LinearLayout.HORIZONTAL);
+            TextView welcome=label("ТВОЙ МУЗЫКАЛЬНЫЙ МИР",10,0xFFE5B9FF,true);welcome.setLetterSpacing(.16f);LinearLayout.LayoutParams welp=new LinearLayout.LayoutParams(-1,dp(22));welp.bottomMargin=dp(2);content.addView(welcome,welp);LinearLayout collage=new LinearLayout(this);collage.setGravity(Gravity.CENTER_VERTICAL);collage.setOrientation(LinearLayout.HORIZONTAL);
             LinearLayout left=new LinearLayout(this);left.setOrientation(LinearLayout.VERTICAL);left.setGravity(Gravity.CENTER_VERTICAL);
-            View coverA=albumTile("the autocollants","apple vines",0xFF6F4A78,0xFF2D1C37,"♫");left.addView(coverA,new LinearLayout.LayoutParams(dp(148),dp(184)));
-            TextView mood=label("〽  Обычная",13,MUTED,true);LinearLayout.LayoutParams moodp=new LinearLayout.LayoutParams(-1,dp(40));moodp.topMargin=dp(12);left.addView(mood,moodp);
+            View coverA=albumTile("the autocollants","apple vines",0xFFB55DAD,0xFF3B1B55,"♫");left.addView(coverA,new LinearLayout.LayoutParams(dp(148),dp(184)));
+            TextView mood=label("✦  Твоя музыкальная волна",13,0xFFFFC7F4,true);LinearLayout.LayoutParams moodp=new LinearLayout.LayoutParams(-1,dp(40));moodp.topMargin=dp(12);left.addView(mood,moodp);
             collage.addView(left,new LinearLayout.LayoutParams(0,-2,1.1f));
             LinearLayout right=new LinearLayout(this);right.setOrientation(LinearLayout.VERTICAL);right.setGravity(Gravity.CENTER_HORIZONTAL);
-            right.addView(albumTile("the autocollants","",0xFF9FB9B5,0xFF354E52,"♫"),new LinearLayout.LayoutParams(dp(104),dp(104)));
+            right.addView(albumTile("the autocollants","",0xFFFFA6C9,0xFF7D3F7B,"♫"),new LinearLayout.LayoutParams(dp(104),dp(104)));
             View gapr=new View(this);right.addView(gapr,new LinearLayout.LayoutParams(1,dp(28)));
-            right.addView(albumTile("VYNIX","after dark",0xFFD9C9D7,0xFF54405C,"✦"),new LinearLayout.LayoutParams(dp(92),dp(92)));
+            right.addView(albumTile("VYNIX","after dark",0xFFFFC66D,0xFF9C426E,"✦"),new LinearLayout.LayoutParams(dp(92),dp(92)));
             TextView bigPlay=label(player!=null&&player.isPlaying()?"Ⅱ":"▶",34,Color.WHITE,true);bigPlay.setGravity(Gravity.CENTER);bigPlay.setBackground(round(0xFF654174,100,0,0));LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(dp(106),dp(106));bp.topMargin=dp(8);right.addView(bigPlay,bp);bigPlay.setOnClickListener(v->{if(tracks.isEmpty())chooseAudio();else togglePlayback();bigPlay.setText(player!=null&&player.isPlaying()?"Ⅱ":"▶");});
             collage.addView(right,new LinearLayout.LayoutParams(0,-2,0.9f));content.addView(collage);gap(18);
             LinearLayout quick=new LinearLayout(this);quick.setOrientation(LinearLayout.HORIZONTAL);
@@ -240,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
     }
     private View albumTile(String title,String subtitle,int top,int bottom,String glyph) {
         LinearLayout tile=new LinearLayout(this);tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.BOTTOM);tile.setPadding(dp(10),dp(10),dp(10),dp(10));
-        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{top,bottom});bg.setCornerRadius(dp(22));tile.setBackground(bg);tile.setElevation(dp(2));
+        GradientDrawable bg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{top,bottom});bg.setCornerRadius(dp(22));tile.setBackground(bg);tile.setElevation(dp(5));
         TextView symbol=label(glyph,30,Color.WHITE,true);symbol.setGravity(Gravity.CENTER);tile.addView(symbol,new LinearLayout.LayoutParams(-1,0,1));
         TextView name=label(title,11,Color.WHITE,true);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);tile.addView(name);
         if(subtitle!=null&&!subtitle.isEmpty()){TextView sub=label(subtitle,9,0xFFE5D9E9,false);sub.setMaxLines(1);tile.addView(sub);}
