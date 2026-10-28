@@ -22,8 +22,11 @@ internal object NuclearStyleSearch {
         return try {
             val sc = pool.submit<List<AudioTrack>> { runCatching { searchSoundCloud(query) }.getOrDefault(emptyList()) }
             val bc = pool.submit<List<AudioTrack>> { runCatching { searchBandcamp(query) }.getOrDefault(emptyList()) }
-            val candidates = sc.get(16, java.util.concurrent.TimeUnit.SECONDS) +
-                bc.get(16, java.util.concurrent.TimeUnit.SECONDS)
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(16)
+            fun remainingSeconds(): Long = ((deadline - System.nanoTime()).coerceAtLeast(1L) / 1_000_000_000L).coerceAtLeast(1L)
+            val scItems = runCatching { sc.get(remainingSeconds(), java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(emptyList())
+            val bcItems = runCatching { bc.get(remainingSeconds(), java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(emptyList())
+            val candidates = scItems + bcItems
             val normalized = normalize(query)
             candidates.distinctBy { it.key }
                 .sortedByDescending { score(it, normalized) }
@@ -66,6 +69,7 @@ internal object NuclearStyleSearch {
         val array = json(url).optJSONArray("collection") ?: JSONArray()
         return (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
+            if (!item.optBoolean("streamable", true)) return@mapNotNull null
             val id = item.optLong("id", -1L).takeIf { it > 0L } ?: return@mapNotNull null
             val title = item.optString("title").takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val user = item.optJSONObject("user")
@@ -134,6 +138,7 @@ internal object NuclearStyleSearch {
     private fun resolveSoundCloud(trackId: Long): String {
         val clientId = getSoundCloudClientId()
         val track = json("https://api-v2.soundcloud.com/tracks/" + trackId + "?client_id=" + clientId)
+        if (!track.optBoolean("streamable", true)) error("SoundCloud track is not streamable")
         val transcodings = track.optJSONObject("media")?.optJSONArray("transcodings") ?: JSONArray()
         val candidate = (0 until transcodings.length()).mapNotNull { transcodings.optJSONObject(it) }
             .firstOrNull {
