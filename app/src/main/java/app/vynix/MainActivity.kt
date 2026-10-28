@@ -438,13 +438,12 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
     var results by remember { mutableStateOf<List<YoutubeTrack>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var searchedQuery by remember { mutableStateOf("") }
+    var retryCounter by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(query) {
+    LaunchedEffect(query, retryCounter) {
         val normalized = query.trim()
         if (normalized.length < 2) {
             results = emptyList()
-            searchedQuery = ""
             error = null
             loading = false
             return@LaunchedEffect
@@ -455,7 +454,6 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
         try {
             val found = withContext(Dispatchers.IO) { searchYoutubeMusic(normalized) }
             results = found
-            searchedQuery = normalized
             if (found.isEmpty()) error = "Ничего не найдено. Попробуй название песни или исполнителя."
         } catch (e: Exception) {
             error = when {
@@ -525,7 +523,7 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
                     Icon(Icons.Rounded.CloudOff, null, tint = Muted, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(10.dp))
                     Text(error ?: "", color = Muted)
-                    TextButton(onClick = { searchedQuery = ""; results = emptyList(); error = null }) { Text("Повторить поиск", color = Lilac) }
+                    TextButton(onClick = { results = emptyList(); error = null; retryCounter++ }) { Text("Повторить поиск", color = Lilac) }
                 }
             }
         }
@@ -538,7 +536,7 @@ private fun searchYoutubeMusic(query: String): List<YoutubeTrack> {
     homepage.readTimeout = 12000
     homepage.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36")
     val homeText = try { homepage.inputStream.bufferedReader().use { it.readText() } } finally { homepage.disconnect() }
-    val apiKey = Regex("""INNERTUBE_API_KEY"\\s*:\\s*"([^"]+)""")
+    val apiKey = Regex("""INNERTUBE_API_KEY"\s*:\s*"([^"]+)""")
         .find(homeText)?.groupValues?.getOrNull(1)
         ?: throw IllegalStateException("Music catalog configuration unavailable")
 
