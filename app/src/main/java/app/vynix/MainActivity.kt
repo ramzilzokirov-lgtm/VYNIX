@@ -465,7 +465,7 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Поиск музыки · несколько источников", color = White, fontWeight = FontWeight.SemiBold)
-                Text(if (token.isBlank()) "SoundCloud + Bandcamp · Яндекс необязательно" else "SoundCloud + Bandcamp + Яндекс Музыка", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(if (token.isBlank()) "YouTube Music + SoundCloud + Bandcamp · Яндекс необязательно" else "YouTube Music + SoundCloud + Bandcamp + Яндекс Музыка", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             TextButton(onClick = { tokenDraft = token; showConnect = true }) { Text(if (token.isBlank()) "Подключить" else "Аккаунт", color = Lilac) }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
