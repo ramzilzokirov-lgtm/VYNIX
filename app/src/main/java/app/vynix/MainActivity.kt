@@ -534,50 +534,102 @@ private fun formatPlayerTime(milliseconds: Long): String {
 
 
 private fun searchMusicServices(query: String): List<AudioTrack> {
-    val encoded = URLEncoder.encode(query.trim(), "UTF-8")
-    val found = LinkedHashMap<String, AudioTrack>()
-    var connection: HttpURLConnection? = null
-    try {
-        connection = (URL("https://discoveryprovider.audius.co/v1/tracks/search?query=$encoded&limit=25&app_name=VYNIX").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 9000
-            readTimeout = 12000
-            requestMethod = "GET"
-            setRequestProperty("User-Agent", "VYNIX-Android/2.0")
-            setRequestProperty("Accept", "application/json")
-        }
-        if (connection.responseCode in 200..299) {
-            val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-            val results = root.optJSONArray("data") ?: JSONArray()
-            for (i in 0 until results.length()) {
-                val item = results.optJSONObject(i) ?: continue
-                val id = item.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: continue
-                if (item.optBoolean("is_streamable", true).not()) continue
-                val title = item.optString("title", "Без названия").takeIf { it.isNotBlank() } ?: "Без названия"
-                val user = item.optJSONObject("user")
-                val artist = user?.optString("name")?.takeIf { !it.isNullOrBlank() && it != "null" } ?: "Неизвестный исполнитель"
-                val artwork = item.optJSONObject("artwork")
-                val artworkUrl = artwork?.optString("480x480")?.takeIf { it.startsWith("http") }
-                    ?: artwork?.optString("150x150")?.takeIf { it.startsWith("http") }
-                val album = item.optString("genre", "").takeIf { it != "null" } ?: ""
-                val streamUrl = "https://discoveryprovider.audius.co/v1/tracks/$id/stream?app_name=VYNIX"
-                val durationMs = item.optLong("duration", 0L).coerceAtLeast(0L) * 1000L
-                found[id] = AudioTrack(
-                    id = id.hashCode().toLong(),
-                    uri = Uri.parse(streamUrl),
-                    title = title,
-                    artist = artist,
-                    album = album,
-                    duration = durationMs,
-                    artworkUrl = artworkUrl,
-                    source = "Audius · полный трек",
-                    isPreview = false
-                )
+    val cleaned = query.trim().replace(Regex("[\\\\/:()\\[\\]{}]"), " ").replace(Regex("\\s+"), " ")
+    if (cleaned.length < 2) return emptyList()
+
+    val lucene = "mediatype:audio AND (title:\\"\${cleaned}\\" OR creator:\\"\${cleaned}\\") AND (licenseurl:*creativecommons.org* OR licenseurl:*publicdomain*)"
+    val searchUrl = "https://archive.org/advancedsearch.php?q=\${URLEncoder.encode(lucene, "UTF-8")}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=licenseurl&rows=18&page=1&output=json"
+    val connection = (URL(searchUrl).openConnection() as HttpURLConnection).apply {
+        connectTimeout = 8000
+        readTimeout = 12000
+        requestMethod = "GET"
+        setRequestProperty("User-Agent", "VYNIX-Android/2.1 (open audio search)")
+        setRequestProperty("Accept", "application/json")
+    }
+    val docs = try {
+        if (connection.responseCode !in 200..299) return emptyList()
+        val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        root.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+    } catch (_: Exception) {
+        return emptyList()
+    } finally {
+        connection.disconnect()
+    }
+
+    val executor = java.util.concurrent.Executors.newFixedThreadPool(5)
+    return try {
+        val tasks = (0 until docs.length()).mapNotNull { index ->
+            val item = docs.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("identifier").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
+            executor.submit<AudioTrack?> {
+                var metadataConnection: HttpURLConnection? = null
+                try {
+                    metadataConnection = (URL("https://archive.org/metadata/$id").openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 6000
+                        readTimeout = 8000
+                        requestMethod = "GET"
+                        setRequestProperty("User-Agent", "VYNIX-Android/2.1")
+                        setRequestProperty("Accept", "application/json")
+                    }
+                    if (metadataConnection.responseCode !in 200..299) return@submit null
+                    val metadataRoot = JSONObject(metadataConnection.inputStream.bufferedReader().use { it.readText() })
+                    val files = metadataRoot.optJSONArray("files") ?: JSONArray()
+                    val candidates = (0 until files.length()).mapNotNull { fileIndex ->
+                        files.optJSONObject(fileIndex)
+                    }.filter { file ->
+                        val name = file.optString("name").lowercase()
+                        val format = file.optString("format").lowercase()
+                        val audioExtension = name.endsWith(".mp3") || name.endsWith(".m4a") ||
+                            name.endsWith(".ogg") || name.endsWith(".oga") || name.endsWith(".flac") ||
+                            name.endsWith(".wav") || name.endsWith(".opus")
+                        val notDerivative = !name.contains("sample") && !name.contains("spectrogram") &&
+                            !name.endsWith(".torrent") && !name.endsWith(".xml") && !name.endsWith(".sqlite")
+                        audioExtension && notDerivative && !format.contains("metadata")
+                    }
+                    val file = candidates.sortedBy { candidate ->
+                        val name = candidate.optString("name").lowercase()
+                        when {
+                            name.endsWith(".mp3") -> 0
+                            name.endsWith(".m4a") -> 1
+                            name.endsWith(".ogg") || name.endsWith(".oga") -> 2
+                            name.endsWith(".flac") -> 3
+                            else -> 4
+                        }
+                    }.firstOrNull() ?: return@submit null
+                    val fileName = file.optString("name")
+                    val escapedFile = fileName.split("/").joinToString("/") {
+                        URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+                    }
+                    val title = item.optString("title").takeIf { it.isNotBlank() && it != "null" }
+                        ?: metadataRoot.optJSONObject("metadata")?.optString("title")?.takeIf { !it.isNullOrBlank() }
+                        ?: id
+                    val creator = item.optString("creator").takeIf { it.isNotBlank() && it != "null" }
+                        ?: metadataRoot.optJSONObject("metadata")?.optString("creator")?.takeIf { !it.isNullOrBlank() }
+                        ?: "Не указан"
+                    val seconds = file.optString("length").toDoubleOrNull()
+                        ?: metadataRoot.optJSONObject("metadata")?.optString("length")?.toDoubleOrNull()
+                        ?: 0.0
+                    AudioTrack(
+                        id = id.hashCode().toLong(),
+                        uri = Uri.parse("https://archive.org/download/$id/$escapedFile"),
+                        title = title,
+                        artist = creator,
+                        album = item.optString("year").takeIf { it.isNotBlank() && it != "null" } ?: "Открытая аудиозапись",
+                        duration = (seconds * 1000.0).toLong().coerceAtLeast(0L),
+                        artworkUrl = "https://archive.org/services/img/$id",
+                        source = if (item.optString("licenseurl").contains("publicdomain", true)) "Internet Archive · общественное достояние" else "Internet Archive · Creative Commons",
+                        isPreview = false
+                    )
+                } catch (_: Exception) {
+                    null
+                } finally {
+                    metadataConnection?.disconnect()
+                }
             }
         }
-    } catch (_: Exception) {
-        // Keep search resilient when the streaming provider is temporarily unavailable.
+        tasks.mapNotNull { task -> try { task.get(12, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { task.cancel(true); null } }
+            .distinctBy { it.key }
     } finally {
-        connection?.disconnect()
+        executor.shutdownNow()
     }
-    return found.values.toList()
 }
