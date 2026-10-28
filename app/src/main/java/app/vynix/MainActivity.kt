@@ -168,17 +168,6 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         } catch (_: Exception) { emptyMap() }
     }
 
-    LaunchedEffect(search) {
-        val query = search.trim()
-        if (query.length < 2) { onlineResults = emptyList(); searchingOnline = false }
-        else {
-            kotlinx.coroutines.delay(450)
-            searchingOnline = true
-            onlineResults = withContext(Dispatchers.IO) { searchMusicServices(query) }
-            searchingOnline = false
-        }
-    }
-
     val currentPlayer = player()
     var isPlaying by remember { mutableStateOf(false) }
     var currentTitle by remember { mutableStateOf("Выбери трек") }
@@ -259,13 +248,72 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     tab == "Профиль" -> AccountScreen()
                     tab == "Медиатека" && selectedPlaylist == null -> PlaylistLibraryScreen(playlists, onCreate = { createPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it; tab = "Плейлисты" })
                     tab == "Поиск" -> {
-                        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), placeholder = { Text("Название песни или исполнитель…") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(18.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
-                        Column(Modifier.weight(1f)) {
-                            if (searchingOnline) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Lilac)
-                            if (search.trim().length < 2) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Поиск по открытому музыкальному каталогу", color = Muted) }
-                            else if (!searchingOnline && filtered.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("В открытом каталоге ничего не найдено. Попробуй другое название.", color = Muted) }
-                            else TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Открытый музыкальный каталог")
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                            placeholder = { Text("Название песни или исполнитель…") },
+                            leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Lilac,
+                                unfocusedBorderColor = SurfaceB,
+                                focusedTextColor = White,
+                                unfocusedTextColor = White
+                            )
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.Public, null, tint = Lilac, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("YouTube Music", color = White, fontWeight = FontWeight.SemiBold)
+                                Text("Поиск популярных песен и настоящие обложки", color = Muted, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize().padding(top = 6.dp),
+                            factory = { ctx ->
+                                android.webkit.WebView(ctx).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.mediaPlaybackRequiresUserGesture = true
+                                    settings.loadsImagesAutomatically = true
+                                    settings.javaScriptCanOpenWindowsAutomatically = false
+                                    settings.allowFileAccess = false
+                                    settings.allowContentAccess = false
+                                    android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+                                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                    webViewClient = android.webkit.WebViewClient()
+                                    webChromeClient = android.webkit.WebChromeClient()
+                                    setBackgroundColor(android.graphics.Color.rgb(16, 14, 23))
+                                    val initialQuery = search.trim()
+                                    val target = if (initialQuery.length >= 2) {
+                                        "https://music.youtube.com/search?q=" + URLEncoder.encode(initialQuery, "UTF-8")
+                                    } else {
+                                        "https://music.youtube.com/"
+                                    }
+                                    tag = target
+                                    loadUrl(target)
+                                }
+                            },
+                            update = { view ->
+                                val query = search.trim()
+                                val target = if (query.length >= 2) {
+                                    "https://music.youtube.com/search?q=" + URLEncoder.encode(query, "UTF-8")
+                                } else {
+                                    "https://music.youtube.com/"
+                                }
+                                if (view.tag != target) {
+                                    view.tag = target
+                                    view.loadUrl(target)
+                                }
+                            }
+                        )
                     }
                     tab == "Избранное" -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Избранное")
                     tab == "Недавние" -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Недавно слушали")
