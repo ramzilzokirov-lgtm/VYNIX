@@ -444,6 +444,7 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
     var tokenDraft by remember { mutableStateOf(token) }
     var playingId by remember { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(token) { tokenDraft = token }
     LaunchedEffect(query, token, retry) {
         val q = query.trim()
@@ -482,7 +483,10 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
             results.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(results, key = { it.key }) { track ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable {
-                        if (playingId != track.id) scope.launch {
+                        if (track.source == "YouTube Music") {
+                            runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, track.uri).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                .onFailure { error = "Не удалось открыть YouTube Music: ${it.message ?: "ошибка запуска"}" }
+                        } else if (playingId != track.id) scope.launch {
                             playingId = track.id; error = null
                             try {
                                 val stream = withContext(Dispatchers.IO) {
