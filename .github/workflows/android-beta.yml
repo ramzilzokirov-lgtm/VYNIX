@@ -5,32 +5,72 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'scripts/**'
+      - 'README.md'
       - '*.gradle.kts'
       - 'gradle.properties'
       - '.github/workflows/android-beta.yml'
 permissions:
   contents: read
+concurrency:
+  group: vynix-android-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout VYNIX branding and build scripts
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
         with:
-          gradle-version: '8.9'
-      - name: Build debug APK
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android build tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Fetch pinned Riff Android engine
         env:
-          APPLE_MUSIC_DEVELOPER_TOKEN: ${{ secrets.APPLE_MUSIC_DEVELOPER_TOKEN }}
-        run: gradle --no-daemon assembleDebug
-      - name: APK SHA-256
-        run: sha256sum app/build/outputs/apk/debug/app-debug.apk
-      - uses: actions/upload-artifact@v4
+          RIFF_COMMIT: d8a4e0df941801c602cb05f6db025460a5a8d8fb
+        run: |
+          git clone https://github.com/aidentallen/riff-android.git "$RUNNER_TEMP/riff-android"
+          git -C "$RUNNER_TEMP/riff-android" checkout "$RIFF_COMMIT"
+          echo "Using Riff source commit: $(git -C "$RUNNER_TEMP/riff-android" rev-parse HEAD)"
+
+      - name: Apply VYNIX identity and gold-graphite branding
+        run: python3 scripts/rebrand_riff.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/riff-android"
+
+      - name: Build VYNIX APKs
+        working-directory: ${{ runner.temp }}/riff-android/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Run Android lint and unit tests
+        working-directory: ${{ runner.temp }}/riff-android/android
+        run: ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest
+
+      - name: Generate APK checksums
+        working-directory: ${{ runner.temp }}/riff-android/android
+        run: |
+          cd app/build/outputs/apk/debug
+          sha256sum *-debug.apk > SHA256SUMS.txt
+
+      - name: Upload VYNIX APKs
+        uses: actions/upload-artifact@v4
         with:
           name: VYNIX-Beta-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/*-debug.apk
+            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
