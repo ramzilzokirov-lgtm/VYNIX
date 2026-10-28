@@ -384,16 +384,13 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
     LaunchedEffect(query, token, retry) {
         val q = query.trim()
         if (q.length < 2) { results = emptyList(); error = null; loading = false; return@LaunchedEffect }
-        if (token.isBlank()) { results = emptyList(); error = "Подключи аккаунт Яндекс Музыки для поиска полных треков."; loading = false; return@LaunchedEffect }
         kotlinx.coroutines.delay(350)
         loading = true; error = null
         try {
-            results = withContext(Dispatchers.IO) { searchYandexTracks(q, token) }
-            if (results.isEmpty()) error = "Яндекс Музыка не нашла треки по этому запросу."
-        } catch (e: Exception) {
-            error = if (e.message?.contains("401") == true || e.message?.contains("403") == true)
-                "Яндекс отклонил авторизацию. Переподключи аккаунт."
-            else "Не удалось получить каталог Яндекс Музыки. Повтори поиск."
+            results = withContext(Dispatchers.IO) { searchMultiSourceTracks(q, token) }
+            if (results.isEmpty()) error = "Ничего не найдено. Попробуй название и исполнителя."
+        } catch (_: Exception) {
+            error = "Музыкальные источники временно недоступны. Попробуй ещё раз."
             results = emptyList()
         } finally { loading = false }
     }
@@ -401,8 +398,8 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Яндекс Музыка", color = White, fontWeight = FontWeight.SemiBold)
-                Text(if (token.isBlank()) "Аккаунт не подключён" else "Каталог Яндекс Музыки · плеер VYNIX", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Поиск музыки · несколько источников", color = White, fontWeight = FontWeight.SemiBold)
+                Text(if (token.isBlank()) "SoundCloud + Bandcamp · Яндекс необязательно" else "SoundCloud + Bandcamp + Яндекс Музыка", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             TextButton(onClick = { tokenDraft = token; showConnect = true }) { Text(if (token.isBlank()) "Подключить" else "Аккаунт", color = Lilac) }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
@@ -413,7 +410,8 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
                     Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp)); Spacer(Modifier.height(10.dp))
                     Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
                     Text("Введи название песни или исполнителя", color = Muted)
-                    if (token.isBlank()) TextButton(onClick = { showConnect = true }) { Text("Подключить Яндекс Музыку", color = Lilac) }
+                    Text("Онлайн-поиск; файлы телефона не сканируются", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    if (token.isBlank()) TextButton(onClick = { showConnect = true }) { Text("Дополнительно подключить Яндекс", color = Lilac) }
                 }
             }
             results.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -422,8 +420,11 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
                         if (playingId != track.id) scope.launch {
                             playingId = track.id; error = null
                             try {
-                                val stream = withContext(Dispatchers.IO) { resolveYandexStream(track.id, token) }
-                                onPlayTrack(track.copy(uri = Uri.parse(stream)))
+                                val stream = withContext(Dispatchers.IO) {
+                                    if (track.source.startsWith("Яндекс Музыка")) resolveYandexStream(track.id, token)
+                                    else NuclearStyleSearch.resolve(track)
+                                }
+                                onPlayTrack(track.copy(uri = Uri.parse(stream), isPreview = false))
                             } catch (e: Exception) {
                                 error = if (e.message?.contains("preview", true) == true)
                                     "Яндекс вернул только фрагмент. VYNIX не запускает 30-секундные превью."
@@ -450,18 +451,18 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.CloudOff, null, tint = Muted, modifier = Modifier.size(42.dp)); Spacer(Modifier.height(10.dp))
                     Text(error ?: "", color = Muted)
-                    if (token.isBlank()) TextButton(onClick = { showConnect = true }) { Text("Подключить аккаунт", color = Lilac) }
-                    else TextButton(onClick = { retry++; error = null }) { Text("Повторить поиск", color = Lilac) }
+                    if (token.isBlank()) TextButton(onClick = { showConnect = true }) { Text("Подключить Яндекс (необязательно)", color = Lilac) }
+                    TextButton(onClick = { retry++; error = null }) { Text("Повторить поиск", color = Lilac) }
                 }
             }
         }
     }
     if (showConnect) AlertDialog(
         onDismissRequest = { showConnect = false }, containerColor = SurfaceA,
-        title = { Text("Подключение Яндекс Музыки", color = White, fontWeight = FontWeight.Bold) },
+        title = { Text("Дополнительный источник: Яндекс Музыка", color = White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Вставь токен своего аккаунта. Он хранится зашифрованным на этом устройстве и отправляется только серверам Яндекса. Не отправляй токен в чат.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Необязательно: токен нужен только для каталога Яндекс Музыки. Он хранится зашифрованным на устройстве. Без него работают другие источники. Не отправляй токен в чат.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(value = tokenDraft, onValueChange = { tokenDraft = it.trim() }, modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Токен аккаунта Яндекса") }, singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
@@ -472,6 +473,12 @@ private fun OpenAudioSearch(query: String, token: String, onTokenChange: (String
         confirmButton = { TextButton(onClick = { onTokenChange(tokenDraft.trim()); showConnect = false; retry++ }, enabled = tokenDraft.trim().isNotBlank()) { Text("Сохранить", color = Lilac) } },
         dismissButton = { TextButton(onClick = { showConnect = false }) { Text("Отмена", color = Muted) } }
     )
+}
+
+private fun searchMultiSourceTracks(query: String, token: String): List<AudioTrack> {
+    val base = runCatching { NuclearStyleSearch.search(query) }.getOrDefault(emptyList())
+    val yandex = if (token.isBlank()) emptyList() else runCatching { searchYandexTracks(query, token) }.getOrDefault(emptyList())
+    return (base + yandex).distinctBy { it.key }.take(60)
 }
 
 private fun searchYandexTracks(query: String, token: String): List<AudioTrack> {
