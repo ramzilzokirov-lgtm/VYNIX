@@ -3,6 +3,7 @@ package app.vynix;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -13,6 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -35,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import org.json.JSONArray;
@@ -387,12 +390,45 @@ public class MainActivity extends AppCompatActivity {
                     String album=deezer?x.optJSONObject("album")!=null?x.optJSONObject("album").optString("title",""): "":x.optString("collectionName","");
                     String url=x.optString("_url","");
                     LinearLayout row=new LinearLayout(MainActivity.this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(10),dp(10),dp(10),dp(10));row.setBackground(round(PANEL,16,0,0));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(7);targetResults.addView(row,rp);
-                    TextView icon=label("♫",23,GOLD,true);icon.setGravity(Gravity.CENTER);row.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(42)));
-                    LinearLayout info=new LinearLayout(MainActivity.this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(10),0,dp(6),0);info.addView(label(title,14,TEXT,true));info.addView(label(artist+(album.isEmpty()?"":" • "+album),11,MUTED,false));info.addView(label(x.optString("_source"),10,GOLD,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(label("↗",19,GOLD,true));row.setOnClickListener(v->openProvider(url.isEmpty()?"https://www.deezer.com/search/":url,""));
+                    String artwork=deezer?(x.optJSONObject("album")!=null?x.optJSONObject("album").optString("cover_medium",""): ""):x.optString("artworkUrl100","");
+                    ImageView icon=new ImageView(MainActivity.this);icon.setScaleType(ImageView.ScaleType.CENTER_CROP);icon.setBackground(round(0xFF302638,13,0x33B89CFF,1));icon.setClipToOutline(true);icon.setImageDrawable(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF705174,0xFF29212F}));row.addView(icon,new LinearLayout.LayoutParams(dp(56),dp(56)));loadSearchArtwork(artwork,icon);
+                    LinearLayout info=new LinearLayout(MainActivity.this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(11),0,dp(6),0);info.addView(label(title,14,TEXT,true));info.addView(label(artist+(album.isEmpty()?"":" • "+album),11,MUTED,false));info.addView(label(x.optString("_source"),10,GOLD,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(label("↗",19,GOLD,true));row.setOnClickListener(v->openProvider(url.isEmpty()?"https://www.deezer.com/search/":url,""));
                 }
             });
         });
     }
+    private void loadSearchArtwork(String address, ImageView target) {
+        if (address == null || address.trim().isEmpty() || target == null) return;
+        target.setTag(address);
+        Thread worker = new Thread(() -> {
+            android.graphics.Bitmap bitmap = null;
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(address).openConnection();
+                connection.setConnectTimeout(7000);
+                connection.setReadTimeout(9000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "VYNIX-Android/0.1");
+                try (InputStream input = connection.getInputStream()) {
+                    bitmap = BitmapFactory.decodeStream(input);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            final android.graphics.Bitmap result = bitmap;
+            if (result != null) runOnUiThread(() -> {
+                if (target.getTag() != null && address.equals(target.getTag())) {
+                    target.setImageBitmap(result);
+                    target.setAlpha(0f);
+                    target.animate().alpha(1f).setDuration(220).setInterpolator(new DecelerateInterpolator()).start();
+                }
+            });
+        }, "vynix-search-artwork");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
     private JSONObject getJson(String address)throws Exception{
         HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();
         try {
