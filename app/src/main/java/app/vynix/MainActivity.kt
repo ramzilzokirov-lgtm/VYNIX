@@ -380,26 +380,20 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
             loading = false
             return@LaunchedEffect
         }
-        kotlinx.coroutines.delay(450)
+        kotlinx.coroutines.delay(350)
         loading = true
         error = null
         try {
-            val token = BuildConfig.APPLE_MUSIC_DEVELOPER_TOKEN
-            if (token.isBlank()) {
-                results = emptyList()
-                error = "Apple Music пока не настроен: для поиска нужен Developer Token. Он должен храниться в секрете сборки APPLE_MUSIC_DEVELOPER_TOKEN, а не в исходниках."
-            } else {
-                val found = withContext(Dispatchers.IO) { searchAppleMusicCatalog(normalized, token) }
-                results = found
-                if (found.isEmpty()) error = "Apple Music не вернул доступных предпрослушиваний для этого запроса. Попробуй другое название."
+            val found = withContext(Dispatchers.IO) { searchAudiusTracks(normalized) }
+            results = found
+            if (found.isEmpty()) {
+                error = "Audius не нашёл доступных для потокового воспроизведения треков. Попробуй другое название или проверь соединение."
             }
         } catch (e: Exception) {
             error = when {
-                e.message?.contains("401") == true || e.message?.contains("403") == true ->
-                    "Apple Music отклонил Developer Token (401/403). Проверь ключ и срок его действия."
                 e.message?.contains("timeout", true) == true || e.message?.contains("timed out", true) == true ->
-                    "Apple Music отвечает слишком долго. Проверь соединение и повтори поиск."
-                else -> "Не удалось выполнить поиск Apple Music. Проверь сеть и настройки токена."
+                    "Audius отвечает слишком долго. Проверь соединение и повтори поиск."
+                else -> "Не удалось подключиться к Audius. Проверь соединение и повтори поиск."
             }
             results = emptyList()
         } finally {
@@ -415,8 +409,8 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Apple Music", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Официальный каталог · нативный интерфейс VYNIX", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Поиск музыки", color = White, fontWeight = FontWeight.SemiBold)
+                Text("Audius · полные потоковые треки · без аккаунта", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
@@ -450,9 +444,10 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
                             Text(track.title, color = White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(4.dp))
                             Text(track.artist, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Apple Music · предпрослушивание", color = Lilac, style = MaterialTheme.typography.labelSmall)
+                            Text(track.source, color = Lilac, style = MaterialTheme.typography.labelSmall)
+                            if (track.duration > 0L) Text(formatPlayerTime(track.duration), color = Muted, style = MaterialTheme.typography.labelSmall)
                         }
-                        Icon(Icons.Rounded.PlayCircle, contentDescription = "Слушать фрагмент", tint = Lilac, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Rounded.PlayCircle, contentDescription = "Воспроизвести трек", tint = Lilac, modifier = Modifier.size(32.dp))
                     }
                 }
             }
@@ -471,318 +466,46 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
     }
 }
 
-private fun searchAppleMusicCatalog(query: String, developerToken: String): List<AudioTrack> {
-    val storefront = java.util.Locale.getDefault().country.lowercase().takeIf { it.length == 2 } ?: "us"
-    val encoded = URLEncoder.encode(query, "UTF-8")
-    val url = URL("https://api.music.apple.com/v1/catalog/$storefront/search?term=$encoded&types=songs&limit=25")
+private fun searchAudiusTracks(query: String): List<AudioTrack> {
+    val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+    val url = URL("https://api.audius.co/v1/tracks/search?query=$encoded&limit=25&app_name=VYNIX")
     val connection = (url.openConnection() as HttpURLConnection).apply {
-        connectTimeout = 10000
-        readTimeout = 12000
+        connectTimeout = 9000
+        readTimeout = 15000
         requestMethod = "GET"
-        setRequestProperty("Authorization", "Bearer $developerToken")
+        setRequestProperty("User-Agent", "VYNIX-Android/2.2")
         setRequestProperty("Accept", "application/json")
-        setRequestProperty("User-Agent", "VYNIX-Android/2.1")
     }
     return try {
         val status = connection.responseCode
-        if (status !in 200..299) throw IllegalStateException("Apple Music HTTP $status")
+        if (status !in 200..299) throw IllegalStateException("Audius HTTP $status")
         val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-        val data = root.optJSONObject("results")?.optJSONObject("songs")?.optJSONArray("data") ?: JSONArray()
+        val data = root.optJSONArray("data") ?: JSONArray()
         (0 until data.length()).mapNotNull { index ->
             val item = data.optJSONObject(index) ?: return@mapNotNull null
-            val attributes = item.optJSONObject("attributes") ?: return@mapNotNull null
-            val previews = attributes.optJSONArray("previews") ?: JSONArray()
-            val preview = (0 until previews.length()).firstNotNullOfOrNull { previews.optJSONObject(it)?.optString("url")?.takeIf(String::isNotBlank) }
-                ?: return@mapNotNull null
-            val artwork = attributes.optJSONObject("artwork")?.optString("url")?.takeIf(String::isNotBlank)
-                ?.replace("{w}", "600")?.replace("{h}", "600")
-            val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val id = item.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
+            if (!item.optBoolean("is_streamable", true)) return@mapNotNull null
+            val title = item.optString("title").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
+            val artist = item.optJSONObject("user")?.optString("name")
+                ?.takeIf { it.isNotBlank() && it != "null" } ?: "Неизвестный исполнитель"
+            val artwork = item.optJSONObject("artwork")
+            val artworkUrl = artwork?.optString("480x480")?.takeIf { it.startsWith("http") }
+                ?: artwork?.optString("150x150")?.takeIf { it.startsWith("http") }
+            val album = item.optString("genre").takeIf { it.isNotBlank() && it != "null" } ?: ""
+            val durationMs = item.optLong("duration", 0L).coerceAtLeast(0L) * 1000L
             AudioTrack(
                 id = id.hashCode().toLong(),
-                uri = Uri.parse(preview),
-                title = attributes.optString("name").ifBlank { "Без названия" },
-                artist = attributes.optString("artistName").ifBlank { "Неизвестный исполнитель" },
-                album = attributes.optString("albumName").ifBlank { "Apple Music" },
-                duration = 30_000L,
-                artworkUrl = artwork,
-                source = "Apple Music",
-                isPreview = true
+                uri = Uri.parse("https://api.audius.co/v1/tracks/$id/stream?app_name=VYNIX"),
+                title = title,
+                artist = artist,
+                album = album,
+                duration = durationMs,
+                artworkUrl = artworkUrl,
+                source = "Audius · полный трек",
+                isPreview = false
             )
         }.distinctBy { it.key }
     } finally {
         connection.disconnect()
-    }
-}
-
-private fun Int.spCompat() = this.sp
-
-private fun String.toColorOrNull(): Color? = try {
-    val value = trim().removePrefix("#")
-    if (value.length != 6) null else Color(android.graphics.Color.parseColor("#$value"))
-} catch (_: Exception) { null }
-
-@Composable
-private fun HomeScreen(favorites: Int, recent: Int, onOpen: (String) -> Unit, onPlay: () -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item {
-            Box(Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Color(0xFF4B2B63), Color(0xFF211A31), Color(0xFF15121D)))).clickable { onPlay() }.padding(22.dp)) {
-                Column(Modifier.align(Alignment.CenterStart)) {
-                    Text("LISTEN DIFFERENT", color = Lilac, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.spCompat())
-                    Spacer(Modifier.height(10.dp))
-                    Text("Твой звук.\nТвои правила.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = White)
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.PlayArrow, null, tint = Ink); Text("  Слушать музыку", color = White) }
-                }
-                Icon(Icons.Rounded.GraphicEq, null, tint = Color(0x66E1B8FF), modifier = Modifier.align(Alignment.BottomEnd).size(100.dp))
-            }
-        }
-        item { Text("МУЗЫКА ОНЛАЙН", color = Muted, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.spCompat()) }
-        item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard("Поиск", "∞", Icons.Rounded.Search, Modifier.weight(1f)) { onOpen("Поиск") }
-            StatCard("Избранное", favorites.toString(), Icons.Rounded.Favorite, Modifier.weight(1f)) { onOpen("Избранное") }
-            StatCard("Недавние", recent.toString(), Icons.Rounded.History, Modifier.weight(1f)) { onOpen("Недавние") }
-        } }
-        item { Text("Открывай музыку", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-        
-        item { FeatureRow("Плейлисты", "Собери музыку под настроение", Icons.Rounded.QueueMusic) { onOpen("Медиатека") } }
-        item { FeatureRow("Онлайн-поиск", "Ищи музыку в музыкальных сервисах", Icons.Rounded.Search) { onOpen("Поиск") } }
-    }
-}
-
-@Composable
-private fun StatCard(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, onClick: () -> Unit) {
-    Column(modifier.clip(RoundedCornerShape(20.dp)).background(SurfaceA).clickable(onClick = onClick).padding(12.dp)) {
-        Icon(icon, null, tint = Lilac)
-        Spacer(Modifier.height(12.dp))
-        Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(title, style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun FeatureRow(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SurfaceA).clickable(onClick = onClick).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(SurfaceB), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Lilac) }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, color = Muted, style = MaterialTheme.typography.bodySmall) }
-        Icon(Icons.Rounded.ChevronRight, null, tint = Muted)
-    }
-}
-
-@Composable
-private fun PlaylistLibraryScreen(playlists: Map<String, List<String>>, onCreate: () -> Unit, onOpenPlaylist: (String) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 6.dp, end = 18.dp, bottom = 20.dp)) {
-        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("Плейлисты", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("Только онлайн-музыка", color = Muted) }
-            Button(onClick = onCreate, colors = ButtonDefaults.buttonColors(containerColor = Lilac, contentColor = Ink)) { Icon(Icons.Rounded.Add, null); Text(" Создать") }
-        } }
-        item { Spacer(Modifier.height(18.dp)) }
-        if (playlists.isEmpty()) item { FeatureRow("Создай первый плейлист", "Добавляй найденные онлайн-треки", Icons.Rounded.QueueMusic, onCreate) }
-        items(playlists.keys.toList(), key = { it }) { name ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceA).clickable { onOpenPlaylist(name) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFF7950A5), Color(0xFF292039)))), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.QueueMusic, null, tint = White) }
-                Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.SemiBold); Text("${playlists[name]?.size ?: 0} треков", color = Muted, style = MaterialTheme.typography.bodySmall) }; Icon(Icons.Rounded.ChevronRight, null, tint = Muted)
-            }
-        }
-    }
-}
-
-@Composable
-private fun LibraryScreen(tracks: List<AudioTrack>, favorites: Set<String>, playlists: Map<String, List<String>>, onFavorite: (AudioTrack) -> Unit, onPlay: (List<AudioTrack>, Int) -> Unit, onCreate: () -> Unit, onOpenPlaylist: (String) -> Unit, onAdd: (AudioTrack) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 6.dp, end = 18.dp, bottom = 20.dp)) {
-        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Медиатека", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("${tracks.size} треков на устройстве", color = Muted) }; Button(onClick = onCreate, colors = ButtonDefaults.buttonColors(containerColor = Lilac, contentColor = Ink)) { Icon(Icons.Rounded.Add, null); Text(" Создать") } } }
-        item { Spacer(Modifier.height(18.dp)); Text("ПЛЕЙЛИСТЫ", color = Muted, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.spCompat()); Spacer(Modifier.height(8.dp)) }
-        if (playlists.isEmpty()) item { FeatureRow("Создай первый плейлист", "Добавляй треки и собирай подборки", Icons.Rounded.QueueMusic, onCreate) }
-        items(playlists.keys.toList(), key = { it }) { name ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp).clip(RoundedCornerShape(18.dp)).background(SurfaceA).clickable { onOpenPlaylist(name) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFF7950A5), Color(0xFF292039)))), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.QueueMusic, null, tint = White) }
-                Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.SemiBold); Text("${playlists[name]?.size ?: 0} треков", color = Muted, style = MaterialTheme.typography.bodySmall) }; Icon(Icons.Rounded.ChevronRight, null, tint = Muted)
-            }
-        }
-        item { Spacer(Modifier.height(20.dp)); Row(verticalAlignment = Alignment.CenterVertically) { Text("ВСЕ ТРЕКИ", color = Muted, style = MaterialTheme.typography.labelMedium, letterSpacing = 2.spCompat()); Spacer(Modifier.weight(1f)); Text("${tracks.size}", color = Lilac) } }
-        items(tracks, key = { it.key }) { track -> TrackRow(track, track.key in favorites, onClick = { onPlay(tracks, tracks.indexOf(track)) }, onFavorite = { onFavorite(track) }, onAdd = { onAdd(track) }) }
-    }
-}
-
-@Composable
-private fun TrackList(tracks: List<AudioTrack>, favorites: Set<String>, onPlay: (List<AudioTrack>, Int) -> Unit, onFavorite: (AudioTrack) -> Unit, onAdd: (AudioTrack) -> Unit, title: String = "", onBack: (() -> Unit)? = null) {
-    Column(Modifier.fillMaxSize()) {
-        if (title.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, null) }; Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text("${tracks.size} треков", color = Muted, style = MaterialTheme.typography.bodySmall) } }
-        if (tracks.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Здесь пока пусто", color = Muted) }
-        else LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)) { items(tracks, key = { it.key }) { track -> TrackRow(track, track.key in favorites, onClick = { onPlay(tracks, tracks.indexOf(track)) }, onFavorite = { onFavorite(track) }, onAdd = { onAdd(track) }) } }
-    }
-}
-
-@Composable
-private fun TrackRow(track: AudioTrack, favorite: Boolean, onClick: () -> Unit, onFavorite: () -> Unit, onAdd: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable(onClick = onClick).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(54.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(listOf(Color(0xFF543B6B), Color(0xFF282133)))), contentAlignment = Alignment.Center) { if (track.artworkUrl != null) AsyncImage(model = track.artworkUrl, contentDescription = "Обложка ${track.album}", modifier = Modifier.fillMaxSize()) else Icon(Icons.Rounded.Album, null, tint = Lilac, modifier = Modifier.size(28.dp)) }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) { Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(track.artist + if (track.source != "На устройстве") " · ${track.source}" else "", color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        IconButton(onClick = onFavorite) { Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null, tint = if (favorite) Lilac else Muted) }
-        IconButton(onClick = onAdd) { Icon(Icons.Rounded.Add, null, tint = Muted) }
-    }
-}
-
-@Composable
-private fun MiniPlayer(title: String, artist: String, artworkUrl: String?, playing: Boolean, position: Long, duration: Long, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
-    var dragging by remember { mutableFloatStateOf(-1f) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp).clip(RoundedCornerShape(20.dp)).background(SurfaceB).animateContentSize()) {
-        Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 12.dp, end = 6.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543)))), contentAlignment = Alignment.Center) { if (artworkUrl != null) AsyncImage(model = artworkUrl, contentDescription = "Обложка трека", modifier = Modifier.fillMaxSize()) else Icon(Icons.Rounded.GraphicEq, null, tint = White) }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(artist, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            IconButton(onClick = onToggle) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = White) }
-            IconButton(onClick = onNext) { Icon(Icons.Rounded.SkipNext, null, tint = White) }
-        }
-        Slider(value = if (dragging >= 0f) dragging else if (duration > 0L) position.toFloat() / duration else 0f, onValueChange = { dragging = it }, onValueChangeFinished = { if (duration > 0) onSeek((dragging * duration).toLong()); dragging = -1f }, modifier = Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 8.dp), colors = SliderDefaults.colors(thumbColor = Lilac, activeTrackColor = Lilac, inactiveTrackColor = Muted.copy(alpha = .25f)))
-    }
-}
-
-@Composable
-private fun FullPlayer(title: String, artist: String, artworkUrl: String?, isPreview: Boolean, playing: Boolean, position: Long, duration: Long, onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
-    var dragging by remember { mutableFloatStateOf(-1f) }
-    androidx.activity.compose.BackHandler(onBack = onClose)
-    androidx.compose.ui.window.Dialog(onDismissRequest = onClose, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val backdrop = Modifier.fillMaxSize()
-            if (artworkUrl != null) AsyncImage(model = artworkUrl, contentDescription = null, modifier = backdrop, contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xCC49305F), Color(0xF2100E17)))))
-            Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Свернуть плеер", tint = White, modifier = Modifier.size(32.dp)) }
-                Column(Modifier.weight(1f)) { Text("СЕЙЧАС ИГРАЕТ", color = Muted, style = MaterialTheme.typography.labelMedium); if (isPreview) Text("30-секундный фрагмент · источник не отдаёт полный трек", color = Color(0xFFFFD180), style = MaterialTheme.typography.labelSmall, maxLines = 2) }
-                Icon(Icons.Rounded.GraphicEq, "VYNIX", tint = Lilac)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543), Color(0xFF17121F)))), contentAlignment = Alignment.Center) { if (artworkUrl != null) AsyncImage(model = artworkUrl, contentDescription = "Обложка $title", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop) else Icon(Icons.Rounded.Album, null, tint = White.copy(alpha = .9f), modifier = Modifier.fillMaxSize(.42f)) }
-                Spacer(Modifier.height(30.dp))
-                Text(title, color = White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(6.dp))
-                Text(artist, color = Muted, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Column(Modifier.fillMaxWidth()) {
-                Slider(value = if (dragging >= 0f) dragging else if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f, onValueChange = { dragging = it }, onValueChangeFinished = { if (duration > 0) onSeek((dragging * duration).toLong()); dragging = -1f }, colors = SliderDefaults.colors(thumbColor = Lilac, activeTrackColor = Lilac, inactiveTrackColor = Muted.copy(alpha = .35f)))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatPlayerTime(if (dragging >= 0f) (dragging * duration).toLong() else position), color = Muted, style = MaterialTheme.typography.labelSmall)
-                    Text(formatPlayerTime(duration), color = Muted, style = MaterialTheme.typography.labelSmall)
-                }
-                Spacer(Modifier.height(14.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "Предыдущий трек", tint = White, modifier = Modifier.size(34.dp)) }
-                    IconButton(onClick = onToggle, modifier = Modifier.size(76.dp).clip(CircleShape).background(Lilac)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Пауза" else "Воспроизвести", tint = Ink, modifier = Modifier.size(46.dp)) }
-                    IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, "Следующий трек", tint = White, modifier = Modifier.size(34.dp)) }
-                }
-            }
-            }
-        }
-    }
-}
-
-private fun formatPlayerTime(milliseconds: Long): String {
-    val totalSeconds = milliseconds.coerceAtLeast(0L) / 1000L
-    return "%d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
-}
-
-
-private fun searchMusicServices(query: String): List<AudioTrack> {
-    val cleaned = query.trim().replace(Regex("[\\\\/:()\\[\\]{}]"), " ").replace(Regex("\\s+"), " ")
-    if (cleaned.length < 2) return emptyList()
-
-    val lucene = "mediatype:audio AND (title:\"${cleaned}\" OR creator:\"${cleaned}\") AND (licenseurl:*creativecommons.org* OR licenseurl:*publicdomain*)"
-    val encodedQuery = URLEncoder.encode(lucene, "UTF-8")
-    val searchUrl = "https://archive.org/advancedsearch.php?q=$encodedQuery&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=licenseurl&rows=18&page=1&output=json"
-    val connection = (URL(searchUrl).openConnection() as HttpURLConnection).apply {
-        connectTimeout = 8000
-        readTimeout = 12000
-        requestMethod = "GET"
-        setRequestProperty("User-Agent", "VYNIX-Android/2.1 (open audio search)")
-        setRequestProperty("Accept", "application/json")
-    }
-    val docs = try {
-        if (connection.responseCode !in 200..299) return emptyList()
-        val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-        root.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
-    } catch (_: Exception) {
-        return emptyList()
-    } finally {
-        connection.disconnect()
-    }
-
-    val executor = java.util.concurrent.Executors.newFixedThreadPool(5)
-    return try {
-        val tasks = (0 until docs.length()).mapNotNull { index ->
-            val item = docs.optJSONObject(index) ?: return@mapNotNull null
-            val id = item.optString("identifier").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
-            executor.submit<AudioTrack?> {
-                var metadataConnection: HttpURLConnection? = null
-                try {
-                    metadataConnection = (URL("https://archive.org/metadata/$id").openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 6000
-                        readTimeout = 8000
-                        requestMethod = "GET"
-                        setRequestProperty("User-Agent", "VYNIX-Android/2.1")
-                        setRequestProperty("Accept", "application/json")
-                    }
-                    if (metadataConnection.responseCode !in 200..299) return@submit null
-                    val metadataRoot = JSONObject(metadataConnection.inputStream.bufferedReader().use { it.readText() })
-                    val files = metadataRoot.optJSONArray("files") ?: JSONArray()
-                    val candidates = (0 until files.length()).mapNotNull { fileIndex ->
-                        files.optJSONObject(fileIndex)
-                    }.filter { file ->
-                        val name = file.optString("name").lowercase()
-                        val format = file.optString("format").lowercase()
-                        val audioExtension = name.endsWith(".mp3") || name.endsWith(".m4a") ||
-                            name.endsWith(".ogg") || name.endsWith(".oga") || name.endsWith(".flac") ||
-                            name.endsWith(".wav") || name.endsWith(".opus")
-                        val notDerivative = !name.contains("sample") && !name.contains("spectrogram") &&
-                            !name.endsWith(".torrent") && !name.endsWith(".xml") && !name.endsWith(".sqlite")
-                        audioExtension && notDerivative && !format.contains("metadata")
-                    }
-                    val file = candidates.sortedBy { candidate ->
-                        val name = candidate.optString("name").lowercase()
-                        when {
-                            name.endsWith(".mp3") -> 0
-                            name.endsWith(".m4a") -> 1
-                            name.endsWith(".ogg") || name.endsWith(".oga") -> 2
-                            name.endsWith(".flac") -> 3
-                            else -> 4
-                        }
-                    }.firstOrNull() ?: return@submit null
-                    val fileName = file.optString("name")
-                    val escapedFile = fileName.split("/").joinToString("/") {
-                        URLEncoder.encode(it, "UTF-8").replace("+", "%20")
-                    }
-                    val title = item.optString("title").takeIf { it.isNotBlank() && it != "null" }
-                        ?: metadataRoot.optJSONObject("metadata")?.optString("title")?.takeIf { !it.isNullOrBlank() }
-                        ?: id
-                    val creator = item.optString("creator").takeIf { it.isNotBlank() && it != "null" }
-                        ?: metadataRoot.optJSONObject("metadata")?.optString("creator")?.takeIf { !it.isNullOrBlank() }
-                        ?: "Не указан"
-                    val seconds = file.optString("length").toDoubleOrNull()
-                        ?: metadataRoot.optJSONObject("metadata")?.optString("length")?.toDoubleOrNull()
-                        ?: 0.0
-                    AudioTrack(
-                        id = id.hashCode().toLong(),
-                        uri = Uri.parse("https://archive.org/download/$id/$escapedFile"),
-                        title = title,
-                        artist = creator,
-                        album = item.optString("year").takeIf { it.isNotBlank() && it != "null" } ?: "Открытая аудиозапись",
-                        duration = (seconds * 1000.0).toLong().coerceAtLeast(0L),
-                        artworkUrl = "https://archive.org/services/img/$id",
-                        source = if (item.optString("licenseurl").contains("publicdomain", true)) "Internet Archive · общественное достояние" else "Internet Archive · Creative Commons",
-                        isPreview = false
-                    )
-                } catch (_: Exception) {
-                    null
-                } finally {
-                    metadataConnection?.disconnect()
-                }
-            }
-        }
-        tasks.mapNotNull { task -> try { task.get(12, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { task.cancel(true); null } }
-            .distinctBy { it.key }
-    } finally {
-        executor.shutdownNow()
     }
 }
