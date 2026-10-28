@@ -158,7 +158,7 @@ internal object NuclearStyleSearch {
         val first = (0 until trackInfo.length()).mapNotNull { trackInfo.optJSONObject(it) }.firstOrNull()
             ?: error("Bandcamp track metadata unavailable")
         val file = first.optJSONObject("file") ?: error("Bandcamp provides preview only")
-        file.optString("mp3-128").takeIf { it.startsWith("http") }
+        return file.optString("mp3-128").takeIf { it.startsWith("http") }
             ?: error("Bandcamp provides preview only")
     }
 
