@@ -503,7 +503,7 @@ private fun searchAppleMusicCatalog(query: String, developerToken: String): List
                 title = attributes.optString("name").ifBlank { "Без названия" },
                 artist = attributes.optString("artistName").ifBlank { "Неизвестный исполнитель" },
                 album = attributes.optString("albumName").ifBlank { "Apple Music" },
-                duration = attributes.optLong("durationInMillis", 0L).coerceAtLeast(0L),
+                duration = 30_000L,
                 artworkUrl = artwork,
                 source = "Apple Music",
                 isPreview = true
