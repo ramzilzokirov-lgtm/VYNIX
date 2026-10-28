@@ -575,7 +575,7 @@ public class MainActivity extends AppCompatActivity {
     private GradientDrawable round(int color,int radius,int stroke,int width){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));if(width>0)d.setStroke(dp(width),stroke);return d;}
     private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
     private void chooseAudio(){audioPicker.launch(new String[]{"audio/*"});}
-    private void playTrack(int index){if(index<0||index>=tracks.size()||player==null)return;currentIndex=index;player.stop();player.clearMediaItems();player.setMediaItem(MediaItem.fromUri(tracks.get(index).uri));refreshMini();refreshMediaNotification();player.prepare();player.play();refreshMini();if(content!=null){content.postDelayed(()->{refreshMini();refreshMediaNotification();},180);content.postDelayed(()->{refreshMini();refreshMediaNotification();},650);}}
+    private void playTrack(int index){if(index<0||index>=tracks.size()||player==null)return;currentIndex=index;player.stop();player.clearMediaItems();player.setMediaItem(MediaItem.fromUri(tracks.get(index).uri));refreshMini();refreshMediaNotification();player.prepare();player.play();refreshMini();refreshMediaNotification();if(content!=null){content.postDelayed(()->{refreshMini();refreshMediaNotification();},250);content.postDelayed(()->{refreshMini();refreshMediaNotification();},900);}}
     private void playAdjacentTrack(int direction) {
         if(tracks.isEmpty())return;
         int base=currentIndex<0?0:currentIndex;
@@ -583,7 +583,7 @@ public class MainActivity extends AppCompatActivity {
         playTrack(nextIndex);
     }
 
-    private void togglePlayback(){if(currentIndex<0){if(!tracks.isEmpty())playTrack(0);else chooseAudio();return;}if(player.isPlaying()||player.getPlayWhenReady())player.pause();else player.play();refreshMini();refreshMediaNotification();}
+    private void togglePlayback(){if(player==null)return;if(currentIndex<0||currentIndex>=tracks.size()){if(!tracks.isEmpty())playTrack(0);else chooseAudio();return;}if(player.isPlaying()||player.getPlayWhenReady())player.pause();else{if(player.getPlaybackState()==Player.STATE_IDLE||player.getPlaybackState()==Player.STATE_ENDED)player.seekTo(0);player.play();}refreshMini();refreshMediaNotification();}
     private void refreshMediaNotification() {
         if(player==null||notificationManager==null||mediaSession==null)return;
         if(player.getMediaItemCount()==0||currentIndex<0||currentIndex>=tracks.size()){notificationManager.cancel(PLAYBACK_NOTIFICATION_ID);return;}
@@ -622,7 +622,7 @@ public class MainActivity extends AppCompatActivity {
         if(miniTitle==null||mini==null||playButton==null)return;
         boolean hasTrack=player!=null&&currentIndex>=0&&currentIndex<tracks.size()&&player.getMediaItemCount()>0;
         boolean playing=player!=null&&player.isPlaying();
-        boolean shouldShow=hasTrack&&player.getPlaybackState()!=androidx.media3.common.Player.STATE_IDLE&&player.getPlaybackState()!=androidx.media3.common.Player.STATE_ENDED;
+        boolean shouldShow=hasTrack;
         mini.animate().cancel();
         if(shouldShow){
             if(mini.getVisibility()!=View.VISIBLE){
