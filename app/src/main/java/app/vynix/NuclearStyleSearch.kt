@@ -16,7 +16,7 @@ internal object NuclearStyleSearch {
         val endpoint = "https://music.youtube.com/youtubei/v1/search?key=" + URLEncoder.encode(apiKey, "UTF-8")
         val body = JSONObject()
             .put("context", JSONObject().put("client", JSONObject()
-                .put("clientName", "WEB_REMIX").put("clientVersion", "1.20261020.01.00")
+                .put("clientName", "WEB_REMIX").put("clientVersion", clientVersion)
                 .put("hl", "en").put("gl", "US")))
             .put("query", query)
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
