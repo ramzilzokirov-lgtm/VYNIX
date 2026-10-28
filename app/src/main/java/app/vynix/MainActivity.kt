@@ -317,10 +317,11 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                                 saveState()
                             },
                             onPlayTrack = { track ->
-                                val original = onlineResults.find { it.key == track.key } ?: track
-                                knownTracks = knownTracks + (original.key to original)
+                                // Keep the resolved stream URL; looking up the original result here
+                                // discarded it and caused the stream resolver to run a second time.
+                                knownTracks = knownTracks + (track.key to track)
                                 saveState()
-                                playFromLibrary(listOf(original), 0)
+                                playFromLibrary(listOf(track), 0)
                             }
                         )
                     }
