@@ -13,6 +13,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,6 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import coil.compose.AsyncImage
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,7 +63,7 @@ private val Lilac = Color(0xFFCE9BFF)
 private val Muted = Color(0xFFA8A1B7)
 private val White = Color(0xFFF8F4FF)
 
-data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long) {
+data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве") {
     val key: String get() = uri.toString()
 }
 
@@ -95,7 +104,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var tracks by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var permissionGranted by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Главная") }
-    var search by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf("")
+    var onlineResults by remember { mutableStateOf(emptyList<AudioTrack>()) }
+    var searchingOnline by remember { mutableStateOf(false) } }
     var favorites by remember { mutableStateOf(setOf<String>()) }
     var recent by remember { mutableStateOf(listOf<String>()) }
     var playlists by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
@@ -154,6 +165,17 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         }
     }
 
+    LaunchedEffect(search) {
+        val query = search.trim()
+        if (query.length < 2) { onlineResults = emptyList(); searchingOnline = false }
+        else {
+            kotlinx.coroutines.delay(450)
+            searchingOnline = true
+            onlineResults = withContext(Dispatchers.IO) { searchMusicServices(query) }
+            searchingOnline = false
+        }
+    }
+
     val currentPlayer = player()
     var isPlaying by remember { mutableStateOf(false) }
     var currentTitle by remember { mutableStateOf("Выбери трек") }
@@ -188,7 +210,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         tab == "Избранное" -> tracks.filter { it.key in favorites }
         tab == "Недавние" -> recent.mapNotNull { key -> tracks.find { it.key == key } }
         tab == "Плейлисты" && selectedPlaylist != null -> tracks.filter { it.key in (playlists[selectedPlaylist] ?: emptyList()) }
-        tab == "Поиск" -> tracks.filter { "${it.title} ${it.artist} ${it.album}".contains(search, true) }
+        tab == "Поиск" -> onlineResults
         else -> tracks
     }
 
@@ -221,8 +243,13 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     tab == "Главная" -> HomeScreen(tracks.size, favorites.size, recent.size, onOpen = { tab = it }, onScan = { refresh++ }, onPlay = { if (tracks.isNotEmpty()) onPlay(tracks, 0) })
                     tab == "Медиатека" && selectedPlaylist == null -> LibraryScreen(tracks, favorites, playlists, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onPlay = onPlay, onCreate = { createPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it; tab = "Плейлисты" }, onAdd = { addTarget = it })
                     tab == "Поиск" -> {
-                        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), placeholder = { Text("Трек, исполнитель, альбом…") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(18.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
-                        TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it })
+                        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), placeholder = { Text("Ищи в музыкальных сервисах…") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(18.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
+                        Column(Modifier.weight(1f)) {
+                            if (searchingOnline) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Lilac)
+                            if (search.trim().length < 2) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Поиск по музыкальным сервисам", color = Muted) }
+                            else if (!searchingOnline && filtered.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Ничего не найдено. Попробуй другое название.", color = Muted) }
+                            else TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Результаты сервисов")
+                        }
                     }
                     tab == "Избранное" -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Избранное")
                     tab == "Недавние" -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Недавно слушали")
@@ -337,9 +364,9 @@ private fun TrackList(tracks: List<AudioTrack>, favorites: Set<String>, onPlay: 
 @Composable
 private fun TrackRow(track: AudioTrack, favorite: Boolean, onClick: () -> Unit, onFavorite: () -> Unit, onAdd: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable(onClick = onClick).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(54.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(listOf(Color(0xFF543B6B), Color(0xFF282133)))), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Album, null, tint = Lilac, modifier = Modifier.size(28.dp)) }
+        Box(Modifier.size(54.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(listOf(Color(0xFF543B6B), Color(0xFF282133)))), contentAlignment = Alignment.Center) { if (track.artworkUrl != null) AsyncImage(model = track.artworkUrl, contentDescription = "Обложка ${track.album}", modifier = Modifier.fillMaxSize()) else Icon(Icons.Rounded.Album, null, tint = Lilac, modifier = Modifier.size(28.dp)) }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) { Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(track.artist, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        Column(Modifier.weight(1f)) { Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(track.artist + if (track.source != "На устройстве") " · ${track.source}" else "", color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         IconButton(onClick = onFavorite) { Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null, tint = if (favorite) Lilac else Muted) }
         IconButton(onClick = onAdd) { Icon(Icons.Rounded.Add, null, tint = Muted) }
     }
@@ -358,4 +385,52 @@ private fun MiniPlayer(title: String, artist: String, playing: Boolean, position
         }
         Slider(value = if (dragging >= 0f) dragging else if (duration > 0L) position.toFloat() / duration else 0f, onValueChange = { dragging = it }, onValueChangeFinished = { if (duration > 0) onSeek((dragging * duration).toLong()); dragging = -1f }, modifier = Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 8.dp), colors = SliderDefaults.colors(thumbColor = Lilac, activeTrackColor = Lilac, inactiveTrackColor = Muted.copy(alpha = .25f)))
     }
+}
+
+
+private fun searchMusicServices(query: String): List<AudioTrack> {
+    val encoded = URLEncoder.encode(query, "UTF-8")
+    val found = LinkedHashMap<String, AudioTrack>()
+    fun request(url: String, parser: (JSONObject) -> Unit) {
+        var connection: HttpURLConnection? = null
+        try {
+            connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 7000
+                readTimeout = 7000
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "VYNIX-Android/2.0")
+            }
+            if (connection.responseCode in 200..299) {
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                parser(JSONObject(body))
+            }
+        } catch (_: Exception) {
+        } finally { connection?.disconnect() }
+    }
+    request("https://itunes.apple.com/search?term=$encoded&entity=song&limit=25") { root ->
+        val results = root.optJSONArray("results") ?: JSONArray()
+        for (i in 0 until results.length()) {
+            val item = results.optJSONObject(i) ?: continue
+            val preview = item.optString("previewUrl")
+            if (preview.isBlank() || preview == "null") continue
+            val title = item.optString("trackName", "Без названия")
+            val artist = item.optString("artistName", "Неизвестный исполнитель")
+            val key = "remote:$preview"
+            found[key] = AudioTrack(item.optLong("trackId", key.hashCode().toLong()), Uri.parse(preview), title, artist, item.optString("collectionName", ""), item.optLong("trackTimeMillis", 0L), item.optString("artworkUrl100").takeIf { it.startsWith("http") }?.replace("100x100bb", "600x600bb"), "Apple Music")
+        }
+    }
+    request("https://api.deezer.com/search?q=$encoded&limit=25") { root ->
+        val results = root.optJSONArray("data") ?: JSONArray()
+        for (i in 0 until results.length()) {
+            val item = results.optJSONObject(i) ?: continue
+            val preview = item.optString("preview")
+            if (preview.isBlank() || preview == "null") continue
+            val title = item.optString("title", "Без названия")
+            val artist = item.optJSONObject("artist")?.optString("name") ?: "Неизвестный исполнитель"
+            val albumObj = item.optJSONObject("album")
+            val key = "remote:$preview"
+            if (!found.containsKey(key)) found[key] = AudioTrack(item.optLong("id", key.hashCode().toLong()), Uri.parse(preview), title, artist, albumObj?.optString("title") ?: "", 30000L, albumObj?.optString("cover_xl")?.takeIf { it.startsWith("http") }, "Deezer")
+        }
+    }
+    return found.values.toList()
 }
