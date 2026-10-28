@@ -12,7 +12,7 @@ android {
         val appleMusicDeveloperToken = providers.gradleProperty("APPLE_MUSIC_DEVELOPER_TOKEN")
             .orElse(providers.environmentVariable("APPLE_MUSIC_DEVELOPER_TOKEN"))
             .getOrElse("")
-        buildConfigField("String", "APPLE_MUSIC_DEVELOPER_TOKEN", "\\"$appleMusicDeveloperToken\\"")
+        buildConfigField("String", "APPLE_MUSIC_DEVELOPER_TOKEN", "\"${appleMusicDeveloperToken}\"")
         minSdk = 26
         targetSdk = 35
         versionCode = 2
