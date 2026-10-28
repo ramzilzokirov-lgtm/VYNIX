@@ -371,74 +371,42 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var retryCounter by remember { mutableIntStateOf(0) }
-
     LaunchedEffect(query, retryCounter) {
         val normalized = query.trim()
-        if (normalized.length < 2) {
-            results = emptyList()
-            error = null
-            loading = false
-            return@LaunchedEffect
-        }
+        if (normalized.length < 2) { results = emptyList(); error = null; loading = false; return@LaunchedEffect }
         kotlinx.coroutines.delay(350)
-        loading = true
-        error = null
+        loading = true; error = null
         try {
-            val found = withContext(Dispatchers.IO) { searchAudiusTracks(normalized) }
-            results = found
-            if (found.isEmpty()) {
-                error = "Audius не нашёл доступных для потокового воспроизведения треков. Попробуй другое название или проверь соединение."
-            }
+            results = withContext(Dispatchers.IO) { searchAudiusTracks(normalized) }
+            if (results.isEmpty()) error = "Audius не нашёл доступных для потокового воспроизведения треков. Попробуй другое название или проверь соединение."
         } catch (e: Exception) {
-            error = when {
-                e.message?.contains("timeout", true) == true || e.message?.contains("timed out", true) == true ->
-                    "Audius отвечает слишком долго. Проверь соединение и повтори поиск."
-                else -> "Не удалось подключиться к Audius. Проверь соединение и повтори поиск."
-            }
+            error = if (e.message?.contains("timeout", true) == true || e.message?.contains("timed out", true) == true)
+                "Audius отвечает слишком долго. Проверь соединение и повтори поиск."
+            else "Не удалось подключиться к Audius. Проверь соединение и повтори поиск."
             results = emptyList()
-        } finally {
-            loading = false
-        }
+        } finally { loading = false }
     }
-
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Поиск музыки", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Audius · полные потоковые треки · без аккаунта", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Audius · потоковое воспроизведение · без аккаунта", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
         when {
             query.trim().length < 2 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp))
-                    Spacer(Modifier.height(10.dp))
+                    Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp)); Spacer(Modifier.height(10.dp))
                     Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
                     Text("Введи название песни или исполнителя", color = Muted)
                 }
             }
-            results.isNotEmpty() -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            results.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(results, key = { it.key }) { track ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                            .background(SurfaceA).clickable { onPlayTrack(track) }.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AsyncImage(
-                            model = track.artworkUrl,
-                            contentDescription = "Обложка ${track.title}",
-                            modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp))
-                        )
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable { onPlayTrack(track) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(model = track.artworkUrl, contentDescription = "Обложка ${track.title}", modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp)))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(track.title, color = White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -451,13 +419,10 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
                     }
                 }
             }
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Lilac)
-            }
+            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Lilac) }
             error != null -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Rounded.CloudOff, null, tint = Muted, modifier = Modifier.size(42.dp))
-                    Spacer(Modifier.height(10.dp))
+                    Icon(Icons.Rounded.CloudOff, null, tint = Muted, modifier = Modifier.size(42.dp)); Spacer(Modifier.height(10.dp))
                     Text(error ?: "", color = Muted)
                     TextButton(onClick = { results = emptyList(); error = null; retryCounter++ }) { Text("Повторить поиск", color = Lilac) }
                 }
@@ -465,16 +430,12 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
         }
     }
 }
-
 private fun searchAudiusTracks(query: String): List<AudioTrack> {
     val encoded = URLEncoder.encode(query.trim(), "UTF-8")
     val url = URL("https://api.audius.co/v1/tracks/search?query=$encoded&limit=25&app_name=VYNIX")
     val connection = (url.openConnection() as HttpURLConnection).apply {
-        connectTimeout = 9000
-        readTimeout = 15000
-        requestMethod = "GET"
-        setRequestProperty("User-Agent", "VYNIX-Android/2.2")
-        setRequestProperty("Accept", "application/json")
+        connectTimeout = 9000; readTimeout = 15000; requestMethod = "GET"
+        setRequestProperty("User-Agent", "VYNIX-Android/2.2"); setRequestProperty("Accept", "application/json")
     }
     return try {
         val status = connection.responseCode
@@ -486,26 +447,115 @@ private fun searchAudiusTracks(query: String): List<AudioTrack> {
             val id = item.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
             if (!item.optBoolean("is_streamable", true)) return@mapNotNull null
             val title = item.optString("title").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
-            val artist = item.optJSONObject("user")?.optString("name")
-                ?.takeIf { it.isNotBlank() && it != "null" } ?: "Неизвестный исполнитель"
+            val artist = item.optJSONObject("user")?.optString("name")?.takeIf { it.isNotBlank() && it != "null" } ?: "Неизвестный исполнитель"
             val artwork = item.optJSONObject("artwork")
-            val artworkUrl = artwork?.optString("480x480")?.takeIf { it.startsWith("http") }
-                ?: artwork?.optString("150x150")?.takeIf { it.startsWith("http") }
-            val album = item.optString("genre").takeIf { it.isNotBlank() && it != "null" } ?: ""
-            val durationMs = item.optLong("duration", 0L).coerceAtLeast(0L) * 1000L
-            AudioTrack(
-                id = id.hashCode().toLong(),
-                uri = Uri.parse("https://api.audius.co/v1/tracks/$id/stream?app_name=VYNIX"),
-                title = title,
-                artist = artist,
-                album = album,
-                duration = durationMs,
-                artworkUrl = artworkUrl,
-                source = "Audius · полный трек",
-                isPreview = false
-            )
+            val artworkUrl = artwork?.optString("480x480")?.takeIf { it.startsWith("http") } ?: artwork?.optString("150x150")?.takeIf { it.startsWith("http") }
+            AudioTrack(id = id.hashCode().toLong(), uri = Uri.parse("https://api.audius.co/v1/tracks/$id/stream?app_name=VYNIX"),
+                title = title, artist = artist, album = item.optString("genre").takeIf { it.isNotBlank() && it != "null" } ?: "",
+                duration = item.optLong("duration", 0L).coerceAtLeast(0L) * 1000L, artworkUrl = artworkUrl,
+                source = "Audius · полный трек", isPreview = false)
         }.distinctBy { it.key }
+    } finally { connection.disconnect() }
+}
+
+private fun searchMusicServices(query: String): List<AudioTrack> {
+    val cleaned = query.trim().replace(Regex("[\\\\/:()\\[\\]{}]"), " ").replace(Regex("\\s+"), " ")
+    if (cleaned.length < 2) return emptyList()
+
+    val lucene = "mediatype:audio AND (title:\"${cleaned}\" OR creator:\"${cleaned}\") AND (licenseurl:*creativecommons.org* OR licenseurl:*publicdomain*)"
+    val encodedQuery = URLEncoder.encode(lucene, "UTF-8")
+    val searchUrl = "https://archive.org/advancedsearch.php?q=$encodedQuery&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=licenseurl&rows=18&page=1&output=json"
+    val connection = (URL(searchUrl).openConnection() as HttpURLConnection).apply {
+        connectTimeout = 8000
+        readTimeout = 12000
+        requestMethod = "GET"
+        setRequestProperty("User-Agent", "VYNIX-Android/2.1 (open audio search)")
+        setRequestProperty("Accept", "application/json")
+    }
+    val docs = try {
+        if (connection.responseCode !in 200..299) return emptyList()
+        val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        root.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+    } catch (_: Exception) {
+        return emptyList()
     } finally {
         connection.disconnect()
+    }
+
+    val executor = java.util.concurrent.Executors.newFixedThreadPool(5)
+    return try {
+        val tasks = (0 until docs.length()).mapNotNull { index ->
+            val item = docs.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("identifier").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
+            executor.submit<AudioTrack?> {
+                var metadataConnection: HttpURLConnection? = null
+                try {
+                    metadataConnection = (URL("https://archive.org/metadata/$id").openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 6000
+                        readTimeout = 8000
+                        requestMethod = "GET"
+                        setRequestProperty("User-Agent", "VYNIX-Android/2.1")
+                        setRequestProperty("Accept", "application/json")
+                    }
+                    if (metadataConnection.responseCode !in 200..299) return@submit null
+                    val metadataRoot = JSONObject(metadataConnection.inputStream.bufferedReader().use { it.readText() })
+                    val files = metadataRoot.optJSONArray("files") ?: JSONArray()
+                    val candidates = (0 until files.length()).mapNotNull { fileIndex ->
+                        files.optJSONObject(fileIndex)
+                    }.filter { file ->
+                        val name = file.optString("name").lowercase()
+                        val format = file.optString("format").lowercase()
+                        val audioExtension = name.endsWith(".mp3") || name.endsWith(".m4a") ||
+                            name.endsWith(".ogg") || name.endsWith(".oga") || name.endsWith(".flac") ||
+                            name.endsWith(".wav") || name.endsWith(".opus")
+                        val notDerivative = !name.contains("sample") && !name.contains("spectrogram") &&
+                            !name.endsWith(".torrent") && !name.endsWith(".xml") && !name.endsWith(".sqlite")
+                        audioExtension && notDerivative && !format.contains("metadata")
+                    }
+                    val file = candidates.sortedBy { candidate ->
+                        val name = candidate.optString("name").lowercase()
+                        when {
+                            name.endsWith(".mp3") -> 0
+                            name.endsWith(".m4a") -> 1
+                            name.endsWith(".ogg") || name.endsWith(".oga") -> 2
+                            name.endsWith(".flac") -> 3
+                            else -> 4
+                        }
+                    }.firstOrNull() ?: return@submit null
+                    val fileName = file.optString("name")
+                    val escapedFile = fileName.split("/").joinToString("/") {
+                        URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+                    }
+                    val title = item.optString("title").takeIf { it.isNotBlank() && it != "null" }
+                        ?: metadataRoot.optJSONObject("metadata")?.optString("title")?.takeIf { !it.isNullOrBlank() }
+                        ?: id
+                    val creator = item.optString("creator").takeIf { it.isNotBlank() && it != "null" }
+                        ?: metadataRoot.optJSONObject("metadata")?.optString("creator")?.takeIf { !it.isNullOrBlank() }
+                        ?: "Не указан"
+                    val seconds = file.optString("length").toDoubleOrNull()
+                        ?: metadataRoot.optJSONObject("metadata")?.optString("length")?.toDoubleOrNull()
+                        ?: 0.0
+                    AudioTrack(
+                        id = id.hashCode().toLong(),
+                        uri = Uri.parse("https://archive.org/download/$id/$escapedFile"),
+                        title = title,
+                        artist = creator,
+                        album = item.optString("year").takeIf { it.isNotBlank() && it != "null" } ?: "Открытая аудиозапись",
+                        duration = (seconds * 1000.0).toLong().coerceAtLeast(0L),
+                        artworkUrl = "https://archive.org/services/img/$id",
+                        source = if (item.optString("licenseurl").contains("publicdomain", true)) "Internet Archive · общественное достояние" else "Internet Archive · Creative Commons",
+                        isPreview = false
+                    )
+                } catch (_: Exception) {
+                    null
+                } finally {
+                    metadataConnection?.disconnect()
+                }
+            }
+        }
+        tasks.mapNotNull { task -> try { task.get(12, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { task.cancel(true); null } }
+            .distinctBy { it.key }
+    } finally {
+        executor.shutdownNow()
     }
 }
