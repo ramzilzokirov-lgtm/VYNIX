@@ -189,7 +189,8 @@ public class MainActivity extends AppCompatActivity {
             sectionTitle("Недавно добавлено","Все",()->{activeTab="Медиатека";render();buildNavSelection();});
             if(tracks.isEmpty()) empty("Здесь пока тихо","Добавь локальные аудиофайлы, чтобы начать."); else for(int i=tracks.size()-1;i>=0;i--)trackRow(tracks.get(i),i);
         } else if(activeTab.equals("Недавние")) {
-            pageTitle("Недавние","Треки, которые доступны в этой сессии");
+            sectionTitle("Недавние",null,null);
+            TextView recentSubtitle=label("Треки, которые доступны в этой сессии",13,MUTED,false);recentSubtitle.setPadding(0,dp(4),0,dp(12));content.addView(recentSubtitle);
             if(currentIndex>=0&&currentIndex<tracks.size()){sectionTitle("Продолжить слушать",null,null);trackRow(tracks.get(currentIndex),currentIndex);gap(12);}
             sectionTitle("Твоя музыка","Обновить",()->render());
             if(tracks.isEmpty())empty("Пока нет недавних треков","Найди музыку или добавь аудиофайл.");else for(int i=tracks.size()-1;i>=0;i--)trackRow(tracks.get(i),i);
