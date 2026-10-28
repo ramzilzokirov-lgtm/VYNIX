@@ -128,6 +128,48 @@ public class MainActivity extends AppCompatActivity {
         Track(Uri u, String t) { uri = u; title = t; }
     }
 
+    private android.content.SharedPreferences libraryPrefs() {
+        return getSharedPreferences("vynix_library_state", MODE_PRIVATE);
+    }
+    private String trackKey(Track track) { return track.uri == null ? "" : track.uri.toString(); }
+    private boolean isFavorite(Track track) {
+        return libraryPrefs().getStringSet("favorites", java.util.Collections.emptySet()).contains(trackKey(track));
+    }
+    private void toggleFavorite(Track track) {
+        java.util.Set<String> favorites = new java.util.HashSet<>(libraryPrefs().getStringSet("favorites", java.util.Collections.emptySet()));
+        String key = trackKey(track);
+        if (favorites.contains(key)) favorites.remove(key); else favorites.add(key);
+        libraryPrefs().edit().putStringSet("favorites", favorites).apply();
+        if (activeTab.equals("Избранное")) render();
+        Toast.makeText(this, favorites.contains(key) ? "Добавлено в избранное ♥" : "Удалено из избранного", Toast.LENGTH_SHORT).show();
+    }
+    private void rememberRecent(Track track) {
+        String key = trackKey(track);
+        if (key.isEmpty()) return;
+        String raw = libraryPrefs().getString("recent", "[]");
+        JSONArray old;
+        try { old = new JSONArray(raw); } catch (Exception e) { old = new JSONArray(); }
+        JSONArray next = new JSONArray(); next.put(key);
+        for (int i = 0; i < old.length() && next.length() < 30; i++) {
+            String value = old.optString(i, "");
+            if (!value.isEmpty() && !value.equals(key)) next.put(value);
+        }
+        libraryPrefs().edit().putString("recent", next.toString()).apply();
+    }
+    private List<Integer> recentTrackIndexes() {
+        List<Integer> result = new ArrayList<>();
+        JSONArray recent;
+        try { recent = new JSONArray(libraryPrefs().getString("recent", "[]")); }
+        catch (Exception e) { recent = new JSONArray(); }
+        for (int i = 0; i < recent.length(); i++) {
+            String key = recent.optString(i, "");
+            for (int j = 0; j < tracks.size(); j++) {
+                if (trackKey(tracks.get(j)).equals(key) && !result.contains(j)) { result.add(j); break; }
+            }
+        }
+        return result;
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         activeInstance=this;
@@ -257,7 +299,7 @@ public class MainActivity extends AppCompatActivity {
             LinearLayout quick=new LinearLayout(this);quick.setOrientation(LinearLayout.HORIZONTAL);
             quick.addView(shortcutCard("◴","Недавние",tracks.size()+" треков",0),new LinearLayout.LayoutParams(0,dp(76),1));
             View qgap=new View(this);quick.addView(qgap,new LinearLayout.LayoutParams(dp(8),1));
-            quick.addView(shortcutCard("♥","Любимые","Скоро в медиатеке",1),new LinearLayout.LayoutParams(0,dp(76),1));content.addView(quick);gap(28);
+            quick.addView(shortcutCard("♥","Любимые",libraryPrefs().getStringSet("favorites",java.util.Collections.emptySet()).size()+" треков",1),new LinearLayout.LayoutParams(0,dp(76),1));content.addView(quick);gap(28);
             sectionTitle("Для вас","Обновить",()->{render();});
             LinearLayout recs=new LinearLayout(this);recs.setOrientation(LinearLayout.HORIZONTAL);
             recs.addView(albumTile("VYNIX","Ночной режим",0xFF30243B,0xFF825D91,"☾"),new LinearLayout.LayoutParams(0,dp(148),1));
@@ -271,7 +313,17 @@ public class MainActivity extends AppCompatActivity {
             TextView recentSubtitle=label("Треки, которые доступны в этой сессии",13,MUTED,false);recentSubtitle.setPadding(0,dp(4),0,dp(12));content.addView(recentSubtitle);
             if(currentIndex>=0&&currentIndex<tracks.size()){sectionTitle("Продолжить слушать",null,null);trackRow(tracks.get(currentIndex),currentIndex);gap(12);}
             sectionTitle("Твоя музыка","Обновить",()->render());
-            if(tracks.isEmpty())empty("Пока нет недавних треков","Найди музыку или добавь аудиофайл.");else for(int i=tracks.size()-1;i>=0;i--)trackRow(tracks.get(i),i);
+            List<Integer> recentIndexes = recentTrackIndexes();
+            if(recentIndexes.isEmpty()) empty("Пока нет недавних треков","Запусти музыку — здесь появится история прослушивания.");
+            else for(int index : recentIndexes) trackRow(tracks.get(index),index);
+        } else if(activeTab.equals("Избранное")) {
+            sectionTitle("Избранное",null,null);
+            TextView favoritesSubtitle=label("Треки, которые ты сохранил сердечком",13,MUTED,false);favoritesSubtitle.setPadding(0,dp(4),0,dp(12));content.addView(favoritesSubtitle);
+            List<Integer> favoriteIndexes=new ArrayList<>();
+            java.util.Set<String> favoriteKeys=libraryPrefs().getStringSet("favorites",java.util.Collections.emptySet());
+            for(int i=0;i<tracks.size();i++)if(favoriteKeys.contains(trackKey(tracks.get(i))))favoriteIndexes.add(i);
+            if(favoriteIndexes.isEmpty())empty("Пока ничего нет","Нажми ♥ рядом с треком, чтобы сохранить его здесь.");
+            else for(int index:favoriteIndexes)trackRow(tracks.get(index),index);
         } else if(activeTab.equals("Медиатека")) {
             addText("Медиатека",30,TEXT,true); addText("ТВОЯ КОЛЛЕКЦИЯ",10,GOLD,true); gap(14);
             LinearLayout cards=new LinearLayout(this); cards.setOrientation(LinearLayout.HORIZONTAL);
@@ -337,7 +389,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout card=new LinearLayout(this);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(dp(10),dp(8),dp(8),dp(8));card.setBackground(round(0xFF251F2B,22,0x443E3545,1));
         TextView glyph=label(icon,19,GOLD,true);glyph.setGravity(Gravity.CENTER);card.addView(glyph,new LinearLayout.LayoutParams(dp(30),dp(42)));
         LinearLayout texts=new LinearLayout(this);texts.setOrientation(LinearLayout.VERTICAL);texts.setPadding(dp(5),0,0,0);texts.addView(label(title,13,TEXT,true));texts.addView(label(subtitle,10,MUTED,false));card.addView(texts,new LinearLayout.LayoutParams(0,-2,1));
-        card.setOnClickListener(v->{if(index==0){activeTab="Недавние";render();buildNavSelection();}else Toast.makeText(this,"Избранное появится вместе с сохранением любимых треков",Toast.LENGTH_SHORT).show();});
+        card.setOnClickListener(v->{if(index==0){activeTab="Недавние";render();buildNavSelection();}else{activeTab="Избранное";render();buildNavSelection();}});
         return card;
     }
 
@@ -567,7 +619,7 @@ public class MainActivity extends AppCompatActivity {
         } finally { c.disconnect(); }
     }
     private void sectionTitle(String title,String action,Runnable r){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);TextView a=label(title,19,TEXT,true);row.addView(a,new LinearLayout.LayoutParams(0,-2,1));TextView b=label(action,12,GOLD,true);row.addView(b);b.setOnClickListener(v->r.run());content.addView(row);gap(10);}
-    private void trackRow(Track t,int index){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(11),dp(10),dp(10),dp(10));row.setBackground(round(0xE8171721,19,0x22B89CFF,1));row.setElevation(dp(1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);TextView art=label("♫",22,Color.WHITE,true);art.setGravity(Gravity.CENTER);int[] coverColors={0xFF705174,0xFF4D6466,0xFF7B657C,0xFF464052,0xFF8A6C91,0xFF5D4B6C};art.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{coverColors[Math.abs(t.title.hashCode())%coverColors.length],0xFF2B202F}));art.setElevation(dp(2));row.addView(art,new LinearLayout.LayoutParams(dp(48),dp(48)));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(12),0,dp(4),0);TextView title=label(t.title,14,TEXT,true);title.setMaxLines(1);title.setEllipsize(android.text.TextUtils.TruncateAt.END);info.addView(title);info.addView(label("НА УСТРОЙСТВЕ  •  ЛОКАЛЬНЫЙ ФАЙЛ",9,MUTED,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));TextView more=label(index==currentIndex&&player!=null&&player.isPlaying()?"Ⅱ":"▶",16,GOLD,true);more.setGravity(Gravity.CENTER);more.setBackground(round(0x33251F3A,13,0x22B89CFF,1));row.addView(more,new LinearLayout.LayoutParams(dp(38),dp(38)));row.setOnClickListener(v->playTrack(index));row.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN){v.animate().scaleX(.985f).scaleY(.985f).setDuration(90).start();}else if(event.getAction()==android.view.MotionEvent.ACTION_UP||event.getAction()==android.view.MotionEvent.ACTION_CANCEL){v.animate().scaleX(1f).scaleY(1f).setDuration(150).start();}return false;});}
+    private void trackRow(Track t,int index){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(11),dp(10),dp(10),dp(10));row.setBackground(round(0xE8171721,19,0x22B89CFF,1));row.setElevation(dp(1));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(8);content.addView(row,p);TextView art=label("♫",22,Color.WHITE,true);art.setGravity(Gravity.CENTER);int[] coverColors={0xFF705174,0xFF4D6466,0xFF7B657C,0xFF464052,0xFF8A6C91,0xFF5D4B6C};art.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{coverColors[Math.abs(t.title.hashCode())%coverColors.length],0xFF2B202F}));art.setElevation(dp(2));row.addView(art,new LinearLayout.LayoutParams(dp(48),dp(48)));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(12),0,dp(4),0);TextView title=label(t.title,14,TEXT,true);title.setMaxLines(1);title.setEllipsize(android.text.TextUtils.TruncateAt.END);info.addView(title);info.addView(label("НА УСТРОЙСТВЕ  •  ЛОКАЛЬНЫЙ ФАЙЛ",9,MUTED,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));TextView favorite=label(isFavorite(t)?"♥":"♡",20,isFavorite(t)?GOLD:MUTED,true);favorite.setGravity(Gravity.CENTER);favorite.setBackground(round(0x33251F3A,13,0x22B89CFF,1));LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(dp(36),dp(38));fp.rightMargin=dp(6);row.addView(favorite,fp);favorite.setOnClickListener(v->toggleFavorite(t));TextView more=label(index==currentIndex&&player!=null&&player.isPlaying()?"Ⅱ":"▶",16,GOLD,true);more.setGravity(Gravity.CENTER);more.setBackground(round(0x33251F3A,13,0x22B89CFF,1));row.addView(more,new LinearLayout.LayoutParams(dp(38),dp(38)));row.setOnClickListener(v->playTrack(index));row.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN){v.animate().scaleX(.985f).scaleY(.985f).setDuration(90).start();}else if(event.getAction()==android.view.MotionEvent.ACTION_UP||event.getAction()==android.view.MotionEvent.ACTION_CANCEL){v.animate().scaleX(1f).scaleY(1f).setDuration(150).start();}return false;});}
     private LinearLayout smallCard(String icon,String title,String sub){LinearLayout c=panel(false);c.setPadding(dp(15),dp(15),dp(12),dp(12));c.setBackground(round(0xFF191722,21,0x33B89CFF,1));TextView symbol=label(icon,24,GOLD,true);symbol.setGravity(Gravity.CENTER);symbol.setBackground(round(0x33251F3A,14,0x22B89CFF,1));c.addView(symbol,new LinearLayout.LayoutParams(dp(42),dp(42)));gapInside(c,dp(9));addTextTo(c,title,15,TEXT,true);addTextTo(c,sub,10,MUTED,false);return c;}
     private LinearLayout panel(boolean hero){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(18),dp(18),dp(18),dp(18));c.setBackground(round(hero?0xFF211C31:0xFF15141D,24,hero?0x66B89CFF:0x22FFFFFF,1));c.setElevation(dp(hero?3:1));return c;}
     private void empty(String title,String body){LinearLayout c=panel(false);addTextTo(c,title,17,TEXT,true);addTextTo(c,body,13,MUTED,false);content.addView(c);}
@@ -579,7 +631,7 @@ public class MainActivity extends AppCompatActivity {
     private GradientDrawable round(int color,int radius,int stroke,int width){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));if(width>0)d.setStroke(dp(width),stroke);return d;}
     private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
     private void chooseAudio(){audioPicker.launch(new String[]{"audio/*"});}
-    private void playTrack(int index){if(index<0||index>=tracks.size()||player==null)return;currentIndex=index;player.stop();player.clearMediaItems();player.setMediaItem(MediaItem.fromUri(tracks.get(index).uri));refreshMini();refreshMediaNotification();player.prepare();player.play();refreshMini();refreshMediaNotification();if(content!=null){content.postDelayed(()->{refreshMini();refreshMediaNotification();},250);content.postDelayed(()->{refreshMini();refreshMediaNotification();},900);}}
+    private void playTrack(int index){if(index<0||index>=tracks.size()||player==null)return;currentIndex=index;rememberRecent(tracks.get(index));player.stop();player.clearMediaItems();player.setMediaItem(MediaItem.fromUri(tracks.get(index).uri));refreshMini();refreshMediaNotification();player.prepare();player.play();refreshMini();refreshMediaNotification();if(content!=null){content.postDelayed(()->{refreshMini();refreshMediaNotification();},250);content.postDelayed(()->{refreshMini();refreshMediaNotification();},900);}}
     private void playAdjacentTrack(int direction) {
         if(tracks.isEmpty())return;
         int base=currentIndex<0?0:currentIndex;
