@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -282,62 +281,53 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     }
 
     selectedYoutubeTrack?.let { youtubeTrack ->
-        androidx.compose.ui.window.Dialog(
+        AlertDialog(
             onDismissRequest = { selectedYoutubeTrack = null },
-            properties = androidx.compose.ui.window.DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
-            )
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = Ink
-            ) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier.fillMaxWidth().background(SurfaceA).padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { selectedYoutubeTrack = null }) {
-                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Назад", tint = White)
-                        }
-                        AsyncImage(
-                            model = youtubeTrack.artworkUrl,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(youtubeTrack.title, color = White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(youtubeTrack.artist, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                    AndroidView(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        factory = { ctx ->
-                            android.webkit.WebView(ctx).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.mediaPlaybackRequiresUserGesture = false
-                                settings.loadsImagesAutomatically = true
-                                settings.allowFileAccess = false
-                                settings.allowContentAccess = false
-                                webViewClient = android.webkit.WebViewClient()
-                                webChromeClient = android.webkit.WebChromeClient()
-                                setBackgroundColor(android.graphics.Color.BLACK)
-                                loadUrl("https://www.youtube.com/embed/${youtubeTrack.videoId}?autoplay=1&playsinline=1&rel=0")
-                            }
-                        }
+            containerColor = SurfaceA,
+            title = {
+                Text("Трек в VYNIX", color = White, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    AsyncImage(
+                        model = youtubeTrack.artworkUrl,
+                        contentDescription = "Обложка ${youtubeTrack.title}",
+                        modifier = Modifier.size(176.dp).clip(RoundedCornerShape(22.dp))
                     )
                     Text(
-                        "Воспроизведение через встроенный официальный YouTube-плеер",
-                        modifier = Modifier.fillMaxWidth().background(SurfaceA).padding(12.dp),
-                        color = Muted,
-                        style = MaterialTheme.typography.labelSmall
+                        youtubeTrack.title,
+                        color = White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Text(youtubeTrack.artist, color = Muted)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(SurfaceB).padding(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(Icons.Rounded.Info, contentDescription = null, tint = Lilac)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Каталог и обложка загружены в VYNIX. Этот источник не предоставляет приложению прямой аудиопоток, поэтому воспроизведение не запускается.",
+                            color = Muted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedYoutubeTrack = null }) {
+                    Text("Назад", color = Lilac)
                 }
             }
-        }
+        )
     }
 
     if (showAppearance) {
