@@ -75,7 +75,7 @@ internal fun AccountScreen() {
                 }
             }
             Spacer(Modifier.height(18.dp))
-            Surface(color = Color(0x332FFFFFF), shape = RoundedCornerShape(100.dp), tonalElevation = 2.dp) {
+            Surface(color = Color(0x33FFFFFF), shape = RoundedCornerShape(100.dp), tonalElevation = 2.dp) {
                 Row(Modifier.padding(horizontal = 13.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Verified, null, tint = Color(0xFFFFD78A), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
