@@ -1,6 +1,13 @@
 package app.vynix;
 
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.os.Build;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.BitmapFactory;
@@ -49,6 +56,10 @@ public class MainActivity extends AppCompatActivity {
     private static final int TEXT = Color.rgb(255, 246, 255), MUTED = Color.rgb(202, 178, 211);
     private final List<Track> tracks = new ArrayList<>();
     private ExoPlayer player;
+    private static final String PLAYBACK_CHANNEL = "vynix_playback";
+    private static final int PLAYBACK_NOTIFICATION_ID = 4701;
+    private android.media.session.MediaSession mediaSession;
+    private NotificationManager notificationManager;
     private LinearLayout root, content, mini;
     private TextView miniTitle, playButton;
     private String activeTab = "Главная";
@@ -122,12 +133,24 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(0);
+        notificationManager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+        if(Build.VERSION.SDK_INT>=26) notificationManager.createNotificationChannel(new NotificationChannel(PLAYBACK_CHANNEL,"VYNIX — воспроизведение",NotificationManager.IMPORTANCE_LOW));
+        mediaSession=new android.media.session.MediaSession(this,"VYNIX");
+        mediaSession.setFlags(android.media.session.MediaSession.FLAG_HANDLES_MEDIA_BUTTONS|android.media.session.MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setCallback(new android.media.session.MediaSession.Callback(){
+            @Override public void onPlay(){if(player!=null)player.play();}
+            @Override public void onPause(){if(player!=null)player.pause();}
+            @Override public void onSkipToNext(){if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();else if(currentIndex+1<tracks.size())playTrack(currentIndex+1);}
+            @Override public void onSkipToPrevious(){if(player!=null&&player.hasPreviousMediaItem())player.seekToPreviousMediaItem();else if(currentIndex>0)playTrack(currentIndex-1);}
+            @Override public void onSeekTo(long pos){if(player!=null)player.seekTo(pos);}
+        });
+        mediaSession.setActive(true);
         player = new ExoPlayer.Builder(this).build();
         player.addListener(new Player.Listener() {
-            @Override public void onIsPlayingChanged(boolean isPlaying) { refreshMini(); syncPlaybackButtons(); }
-            @Override public void onPlaybackStateChanged(int playbackState) { refreshMini(); syncPlaybackButtons(); }
-            @Override public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) { refreshMini(); syncPlaybackButtons(); }
-            @Override public void onMediaItemTransition(MediaItem item, int reason) { refreshMini(); syncPlaybackButtons(); }
+            @Override public void onIsPlayingChanged(boolean isPlaying) { refreshMini(); syncPlaybackButtons(); refreshMediaNotification(); }
+            @Override public void onPlaybackStateChanged(int playbackState) { refreshMini(); syncPlaybackButtons(); refreshMediaNotification(); }
+            @Override public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) { refreshMini(); syncPlaybackButtons(); refreshMediaNotification(); }
+            @Override public void onMediaItemTransition(MediaItem item, int reason) { refreshMini(); syncPlaybackButtons(); refreshMediaNotification(); }
         });
         audioPicker = registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
             if (uris == null) return;
@@ -561,6 +584,40 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void togglePlayback(){if(currentIndex<0){if(!tracks.isEmpty())playTrack(0);else chooseAudio();return;}if(player.isPlaying())player.pause();else player.play();refreshMini();}
+    private void refreshMediaNotification() {
+        if(player==null||notificationManager==null||mediaSession==null)return;
+        if(player.getMediaItemCount()==0||currentIndex<0||currentIndex>=tracks.size()){notificationManager.cancel(PLAYBACK_NOTIFICATION_ID);return;}
+        Track track=tracks.get(currentIndex); boolean playing=player.isPlaying();
+        mediaSession.setPlaybackState(new android.media.session.PlaybackState.Builder()
+            .setActions(android.media.session.PlaybackState.ACTION_PLAY|android.media.session.PlaybackState.ACTION_PAUSE|android.media.session.PlaybackState.ACTION_PLAY_PAUSE|android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT|android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS|android.media.session.PlaybackState.ACTION_SEEK_TO)
+            .setState(playing?android.media.session.PlaybackState.STATE_PLAYING:(player.getPlayWhenReady()?android.media.session.PlaybackState.STATE_BUFFERING:android.media.session.PlaybackState.STATE_PAUSED),player.getCurrentPosition(),playing?1f:0f).build());
+        mediaSession.setMetadata(new android.media.MediaMetadata.Builder().putString(android.media.MediaMetadata.METADATA_KEY_TITLE,track.title).putString(android.media.MediaMetadata.METADATA_KEY_ARTIST,"VYNIX • Музыка").putLong(android.media.MediaMetadata.METADATA_KEY_DURATION,Math.max(0,player.getDuration())).build());
+        PendingIntent open=PendingIntent.getActivity(this,4702,new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,PLAYBACK_CHANNEL):new Notification.Builder(this);
+        b.setSmallIcon(android.R.drawable.ic_media_play).setContentTitle(track.title).setContentText("VYNIX • "+(playing?"Сейчас играет":"На паузе")).setContentIntent(open).setShowWhen(false).setOnlyAlertOnce(true).setOngoing(playing).setVisibility(Notification.VISIBILITY_PUBLIC)
+          .addAction(new Notification.Action.Builder(android.R.drawable.ic_media_previous,"Предыдущий",mediaAction("PREVIOUS",4703)).build())
+          .addAction(new Notification.Action.Builder(playing?android.R.drawable.ic_media_pause:android.R.drawable.ic_media_play,playing?"Пауза":"Воспроизвести",mediaAction("TOGGLE",4704)).build())
+          .addAction(new Notification.Action.Builder(android.R.drawable.ic_media_next,"Следующий",mediaAction("NEXT",4705)).build())
+          .setStyle(new Notification.MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0,1,2));
+        notificationManager.notify(PLAYBACK_NOTIFICATION_ID,b.build());
+    }
+    private PendingIntent mediaAction(String action,int code){
+        Intent i=new Intent(this,PlaybackActionReceiver.class).setAction("app.vynix.MEDIA_"+action);
+        return PendingIntent.getBroadcast(this,code,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+    }
+    public static class PlaybackActionReceiver extends BroadcastReceiver {
+        @Override public void onReceive(Context context,Intent intent){
+            Intent i=new Intent(context,MainActivity.class).setAction(intent.getAction()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            context.startActivity(i);
+        }
+    }
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);if(intent==null||intent.getAction()==null)return;
+        if("app.vynix.MEDIA_TOGGLE".equals(intent.getAction()))togglePlayback();
+        else if("app.vynix.MEDIA_NEXT".equals(intent.getAction())){if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();else if(currentIndex+1<tracks.size())playTrack(currentIndex+1);}
+        else if("app.vynix.MEDIA_PREVIOUS".equals(intent.getAction())){if(player!=null&&player.hasPreviousMediaItem())player.seekToPreviousMediaItem();else if(currentIndex>0)playTrack(currentIndex-1);}
+    }
+
     private void refreshMini(){
         if(miniTitle==null||mini==null||playButton==null)return;
         boolean hasTrack=player!=null&&currentIndex>=0&&currentIndex<tracks.size()&&player.getMediaItemCount()>0;
@@ -699,5 +756,5 @@ public class MainActivity extends AppCompatActivity {
         apiExecutor.execute(()->{try{JSONArray items=new JSONArray();for(Track t:tracks){JSONObject item=new JSONObject();item.put("item_id",t.uri.toString());item.put("title",t.title);item.put("artist","");item.put("source","local");item.put("favorite",false);items.put(item);}JSONObject body=new JSONObject();body.put("items",items);apiRequest("/v1/library/"+accountId,"PUT",body);}catch(Exception ignored){}});
     }
 
-    @Override protected void onDestroy(){apiExecutor.shutdownNow();if(player!=null)player.release();super.onDestroy();}
+    @Override protected void onDestroy(){apiExecutor.shutdownNow();if(player!=null)player.release();if(mediaSession!=null){mediaSession.setActive(false);mediaSession.release();}if(notificationManager!=null)notificationManager.cancel(PLAYBACK_NOTIFICATION_ID);super.onDestroy();}
 }
