@@ -63,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
     private NotificationManager notificationManager;
     private LinearLayout root, content, mini;
     private TextView miniTitle, playButton;
+    private ImageView miniArtwork;
     private String activeTab = "Главная";
     private int currentIndex = -1;
     private final ExecutorService apiExecutor = Executors.newSingleThreadExecutor();
@@ -248,8 +249,8 @@ public class MainActivity extends AppCompatActivity {
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(18), dp(2), dp(18), dp(22));
         scroller.addView(content); root.addView(scroller, new LinearLayout.LayoutParams(-1, 0, 1));
         mini = new LinearLayout(this); mini.setGravity(Gravity.CENTER_VERTICAL); mini.setPadding(dp(12), dp(8), dp(8), dp(8)); mini.setBackground(round(0xEE6D4C7D, 38, 0x88E4B7FF, 1));
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); mini.setVisibility(View.GONE); root.addView(mini, mp);
-        TextView logo = label("♫", 25, GOLD, true); logo.setGravity(Gravity.CENTER); logo.setBackground(round(BG, 14, 0, 0)); mini.addView(logo, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(66)); mp.setMargins(dp(12), dp(5), dp(12), dp(8)); mini.setVisibility(View.GONE); mini.setBackground(round(0xF5221C2A,20,0x55B89CFF,1)); mini.setElevation(dp(12)); root.addView(mini, mp);
+        miniArtwork = new ImageView(this); miniArtwork.setScaleType(ImageView.ScaleType.CENTER_CROP); miniArtwork.setBackground(round(BG, 12, 0, 0)); miniArtwork.setClipToOutline(true); mini.addView(miniArtwork, new LinearLayout.LayoutParams(dp(46), dp(46)));
         miniTitle = label("Выбери свою музыку", 13, TEXT, true); miniTitle.setSingleLine(true); miniTitle.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE); miniTitle.setMarqueeRepeatLimit(-1); LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(dp(10),0,0,0); info.addView(miniTitle); TextView sub=label("VYNIX • локальная библиотека",10,MUTED,false); info.addView(sub); mini.addView(info,new LinearLayout.LayoutParams(0,-2,1));
         playButton=label("▶",22,GOLD,true); playButton.setGravity(Gravity.CENTER); mini.addView(playButton,new LinearLayout.LayoutParams(dp(46),dp(46)));
         playButton.setOnClickListener(v -> togglePlayback()); mini.setOnClickListener(v -> showPlayer()); mini.setElevation(dp(8));
@@ -628,8 +629,8 @@ public class MainActivity extends AppCompatActivity {
         apiExecutor.execute(()->{
             List<JSONObject> found=new ArrayList<>();List<String> sources=new ArrayList<>();
             try{JSONObject deezer=getJson("https://api.deezer.com/search?q="+Uri.encode(q));JSONArray a=deezer.optJSONArray("data");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Deezer");x.put("_url",x.optString("link","https://www.deezer.com/search/"+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
-            try{JSONObject itunes=getJson("https://itunes.apple.com/search?media=music&entity=song&limit=15&term="+Uri.encode(q));JSONArray a=itunes.optJSONArray("results");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Apple Music");x.put("_url",x.optString("trackViewUrl","https://music.apple.com/search?term="+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
-            try {
+            if(found.size()<10) try{JSONObject itunes=getJson("https://itunes.apple.com/search?media=music&entity=song&limit=15&term="+Uri.encode(q));JSONArray a=itunes.optJSONArray("results");if(a!=null)for(int i=0;i<a.length()&&i<15;i++){JSONObject x=a.optJSONObject(i);if(x!=null){x.put("_source","Apple Music");x.put("_url",x.optString("trackViewUrl","https://music.apple.com/search?term="+Uri.encode(q)));found.add(x);}}}catch(Exception ignored){}
+            if(found.size()<5) try {
                 JSONObject archive = getJson("https://archive.org/advancedsearch.php?q=" + Uri.encode("title:(" + q + ") AND mediatype:audio") + "&fl[]=identifier&fl[]=title&fl[]=creator&rows=8&page=1&output=json");
                 JSONObject response = archive.optJSONObject("response");
                 JSONArray docs = response == null ? null : response.optJSONArray("docs");
@@ -820,6 +821,7 @@ public class MainActivity extends AppCompatActivity {
             }).start();
         }
         if(currentIndex>=0&&currentIndex<tracks.size()){
+            if(miniArtwork!=null && !trackKey(tracks.get(currentIndex)).equals(miniArtwork.getTag())) loadPlayerArtwork(tracks.get(currentIndex).uri, miniArtwork);
             String nextTitle=tracks.get(currentIndex).title;
             if(!nextTitle.contentEquals(miniTitle.getText())){
                 miniTitle.animate().cancel();miniTitle.setAlpha(.55f);miniTitle.setTranslationY(dp(4));miniTitle.setText(nextTitle);
