@@ -115,7 +115,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var permissionGranted by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Главная") }
     var search by remember { mutableStateOf("") }
-    var jamendoClientId by remember { mutableStateOf("") }
+    var jamendoClientId by remember { mutableStateOf("4894ca61") }
     var onlineResults by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var searchingOnline by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(setOf<String>()) }
@@ -143,7 +143,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     LaunchedEffect(Unit) {
         paletteIndex = prefs.getInt("background_palette", 0).coerceIn(0, BackgroundPalettes.lastIndex)
         customTopHex = prefs.getString("background_custom_hex", "") ?: ""
-        jamendoClientId = prefs.getString("jamendo_client_id", "") ?: ""
+        jamendoClientId = prefs.getString("jamendo_client_id", "4894ca61") ?: "4894ca61"
         animationEnabled = prefs.getBoolean("background_animation", true)
         animationSpeed = prefs.getFloat("background_speed", 1f).coerceIn(0.5f, 2f)
     }
