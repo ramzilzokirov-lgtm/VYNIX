@@ -213,8 +213,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     }
                 }
                 onPlay(resolved, index.coerceIn(0, (resolved.size - 1).coerceAtLeast(0)))
-            } catch (_: Exception) {
-                playbackError = "Полный поток для одного из треков недоступен. Попробуй другой результат поиска."
+            } catch (e: Exception) {
+                val detail = (e.message ?: e.cause?.message ?: "неизвестная ошибка").take(180)
+                playbackError = "Не удалось открыть аудио: $detail"
             }
         }
     }
@@ -241,6 +242,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                 if (key != null) { recent = (listOf(key) + recent.filterNot { it == key }).take(50); saveState() }
             }
             override fun onPlaybackStateChanged(playbackState: Int) { duration = c?.duration?.coerceAtLeast(0L) ?: 0L }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                playbackError = "Ошибка плеера: ${error.errorCodeName} — ${(error.message ?: "источник не отдал аудио").take(160)}"
+            }
         }
         c?.addListener(listener)
         onDispose { c?.removeListener(listener) }
@@ -330,7 +334,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                                 val original = onlineResults.find { it.key == track.key } ?: track
                                 knownTracks = knownTracks + (original.key to original)
                                 saveState()
-                                onPlay(listOf(track), 0)
+                                playFromLibrary(listOf(original), 0)
                             }
                         )
                     }
