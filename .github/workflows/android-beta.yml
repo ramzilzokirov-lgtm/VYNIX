@@ -49,35 +49,27 @@ jobs:
       - name: Apply VYNIX identity and gold-graphite branding
         run: python3 scripts/rebrand_riff.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/riff-android"
 
-      - name: Build VYNIX APKs
+      - name: Build ARM64 VYNIX APK
         working-directory: ${{ runner.temp }}/riff-android/android
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleDebug
+          APK="app/build/outputs/apk/debug/app-arm64-v8a-debug.apk"
+          test -s "$APK"
+          cp "$APK" app/build/outputs/apk/debug/VYNIX-arm64-v8a.apk
+          cd app/build/outputs/apk/debug
+          sha256sum VYNIX-arm64-v8a.apk > SHA256SUMS.txt
 
       - name: Run Android lint and unit tests
         working-directory: ${{ runner.temp }}/riff-android/android
         run: ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest
 
-      - name: Package corresponding modified source
-        run: |
-          cd "$RUNNER_TEMP/riff-android"
-          zip -qr "$RUNNER_TEMP/riff-android/android/app/build/outputs/apk/debug/VYNIX-modified-source.zip" android \
-            -x 'android/.gradle/*' 'android/app/build/*'
-
-      - name: Generate APK and source checksums
-        working-directory: ${{ runner.temp }}/riff-android/android
-        run: |
-          cd app/build/outputs/apk/debug
-          sha256sum *-debug.apk VYNIX-modified-source.zip > SHA256SUMS.txt
-
-      - name: Upload VYNIX APKs and corresponding source
+      - name: Upload installable VYNIX ARM64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: VYNIX-Beta-APK
+          name: VYNIX-ARM64-APK
           path: |
-            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/*-debug.apk
-            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/VYNIX-modified-source.zip
+            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/VYNIX-arm64-v8a.apk
             ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
