@@ -6,6 +6,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -48,7 +49,19 @@ class VynixPlaybackService : MediaSessionService() {
         )
         mediaCache = cache
 
-        val upstreamFactory = DefaultDataSource.Factory(this)
+        // YouTube's signed media URLs can reject ExoPlayer's default user-agent.
+        // Send a browser-like user-agent and the originating music page as request headers.
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36")
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(25_000)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Referer" to "https://music.youtube.com/",
+                    "Origin" to "https://music.youtube.com"
+                )
+            )
+        val upstreamFactory = DefaultDataSource.Factory(this, httpFactory)
         val cacheDataSourceFactory = CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstreamFactory)
