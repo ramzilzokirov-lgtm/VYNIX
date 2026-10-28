@@ -12,14 +12,15 @@ if len(sys.argv) != 3:
 
 vynix = Path(sys.argv[1]).resolve()
 riff = Path(sys.argv[2]).resolve()
-android = riff / "android"
-app = android / "app"
+app = riff / "android" / "app"
 
 gradle = app / "build.gradle"
 text = gradle.read_text(encoding="utf-8")
 text = text.replace("applicationId 'io.github.rootscripts.riff'", "applicationId 'app.vynix'")
-text = re.sub(r"versionCode\s+1", "versionCode 4", text, count=1)
-text = re.sub(r"versionName\s+'[^']+'", "versionName '0.1.0-beta'", text, count=1)
+text = re.sub(r"versionCode\s+1", "versionCode 5", text, count=1)
+text = re.sub(r"versionName\s+'[^']+'", "versionName '0.1.0-beta2'", text, count=1)
+text = text.replace("ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }", "ndk { abiFilters 'arm64-v8a' }")
+text = text.replace("include 'arm64-v8a', 'armeabi-v7a', 'x86_64'\n            universalApk true", "include 'arm64-v8a'\n            universalApk false")
 gradle.write_text(text, encoding="utf-8")
 
 manifest = app / "src/main/AndroidManifest.xml"
@@ -29,63 +30,45 @@ text = text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@drawab
 text = text.replace('android:roundIcon="@mipmap/ic_launcher"', 'android:roundIcon="@drawable/ic_vynix_logo"')
 manifest.write_text(text, encoding="utf-8")
 
-# Replace brand text inside quoted UI literals only. Keep class/package names,
-# upstream URLs, copyright notices, and license text intact.
-source = app / "src/main"
 literal = re.compile(r'"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'')
-for path in source.rglob("*"):
+for path in (app / "src/main").rglob("*"):
     if not path.is_file() or path.suffix.lower() not in {".java", ".xml", ".properties", ".json"}:
         continue
     try:
         content = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         continue
-
-    def rebrand(match: re.Match[str]) -> str:
-        value = match.group(0)
-        return re.sub(r"\bRiff\b", "VYNIX", value)
-
-    updated = literal.sub(rebrand, content)
-    # The manifest and resource labels can be unquoted text nodes/attributes.
+    updated = literal.sub(lambda m: re.sub(r"\bRiff\b", "VYNIX", m.group(0)), content)
     updated = updated.replace(">Riff<", ">VYNIX<")
     if updated != content:
         path.write_text(updated, encoding="utf-8")
 
-# Use VYNIX's existing graphite-and-gold vector for the launcher icon.
 icon_source = vynix / "app/src/main/res/drawable/ic_vynix_logo.xml"
 icon_target = app / "src/main/res/drawable/ic_vynix_logo.xml"
 icon_target.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(icon_source, icon_target)
 
-# The source app's default accent is lavender; make gold the default while
-# leaving the built-in accent choices available to the user.
 main_activity = app / "src/main/java/io/github/rootscripts/riff/MainActivity.java"
 if main_activity.exists():
-    content = main_activity.read_text(encoding="utf-8")
-    content = content.replace("0xffd0bcff", "0xffffcd5e")
+    content = main_activity.read_text(encoding="utf-8").replace("0xffd0bcff", "0xffffcd5e")
     main_activity.write_text(content, encoding="utf-8")
 
-# Keep online lookup bounded and ensure resolver failures reach Media3 instead of
-# leaving the player buffering forever. These patches apply to the pinned upstream
-# checkout during CI, so the delivered APK includes them without modifying upstream.
 online = app / "src/main/java/io/github/rootscripts/riff/Online.java"
 content = online.read_text(encoding="utf-8")
 content = content.replace('"ytsearch15:"', '"ytsearch5:"').replace('"scsearch15:"', '"scsearch5:"')
 content = content.replace('.addOption("--retries", 1)', '.addOption("--retries", 0)')
 content = content.replace('.addOption("--extractor-retries", 1)', '.addOption("--extractor-retries", 0)')
+content = content.replace(
+    "if (cached != null && System.currentTimeMillis() - cached.time < 20 * 60 * 1000) return cached;",
+    "// Signed media URLs expire quickly; avoid reusing stale URLs on replay.\n"
+    "    if (cached != null && System.currentTimeMillis() - cached.time < 45 * 1000) return cached;\n"
+    "    cache.remove(source);",
+)
+content = content.replace('.addOption("--no-warnings");', '.addOption("--no-warnings")\n        .addOption("--no-cache-dir");')
 online.write_text(content, encoding="utf-8")
 
 media_source = app / "src/main/java/io/github/rootscripts/riff/OnlineMediaSource.java"
 content = media_source.read_text(encoding="utf-8")
-old_error = 'error = new IOException("Could not resolve this audio: " + e.getMessage(), e);'
-new_error = old_error + '\n                    refreshSourceInfo(Timeline.EMPTY);'
-if old_error not in content:
-    raise SystemExit("Expected OnlineMediaSource resolver error block was not found; refusing to build an unpatched APK.")
-content = content.replace(old_error, new_error, 1)
-media_source.write_text(content, encoding="utf-8")
-
-# Preserve extractor-provided User-Agent/Referer headers. A hard-coded app
-# User-Agent can make signed YouTube/SoundCloud media URLs return HTTP 403.
 old_http_factory = '''                new DefaultHttpDataSource.Factory()
                     .setUserAgent("RiffAndroid/1.0")
                     .setConnectTimeoutMs(20000)
@@ -96,15 +79,11 @@ new_http_factory = '''                new DefaultHttpDataSource.Factory()
 if old_http_factory not in content:
     raise SystemExit("Expected HTTP factory block was not found; refusing to build without the playback-header fix.")
 content = content.replace(old_http_factory, new_http_factory, 1)
+old_error = 'error = new IOException("Could not resolve this audio: " + e.getMessage(), e);'
+new_error = old_error + '\n                    refreshSourceInfo(Timeline.EMPTY);'
+if old_error not in content:
+    raise SystemExit("Expected resolver error block was not found; refusing to build an unpatched APK.")
+content = content.replace(old_error, new_error, 1)
+media_source.write_text(content, encoding="utf-8")
 
-# Signed stream URLs expire; don't keep resolved URLs for 20 minutes.
-online = app / "src/main/java/io/github/rootscripts/riff/Online.java"
-content = online.read_text(encoding="utf-8")
-old_cache = "if (cached != null && System.currentTimeMillis() - cached.time < 20 * 60 * 1000) return cached;"
-new_cache = "// Signed media URLs expire quickly; avoid reusing stale URLs on replay.\\n    if (cached != null && System.currentTimeMillis() - cached.time < 90 * 1000) return cached;\\n    cache.remove(source);"
-if old_cache not in content:
-    raise SystemExit("Expected stream cache block was not found; refusing to build without the stale-URL fix.")
-content = content.replace(old_cache, new_cache, 1)
-online.write_text(content, encoding="utf-8")
-
-print("Prepared VYNIX branding, package ID, version, launcher icon and online playback fixes.")
+print("Prepared VYNIX branding, online playback fixes and ARM64-only APK.")
