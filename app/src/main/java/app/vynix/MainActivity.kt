@@ -550,15 +550,15 @@ private fun saveYandexToken(context: android.content.Context, token: String) {
     if (token.isBlank()) { prefs.edit().remove("token").apply(); return }
     val alias = "vynix_yandex_token_key"
     val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-    var key = store.getKey(alias, null) as? javax.crypto.SecretKey
-    if (key == null) {
+    val key: javax.crypto.SecretKey = (store.getKey(alias, null) as? javax.crypto.SecretKey) ?: run {
         val generator = javax.crypto.KeyGenerator.getInstance(android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         val spec = android.security.keystore.KeyGenParameterSpec.Builder(alias,
             android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
             .setRandomizedEncryptionRequired(true).build()
-        generator.init(spec); key = generator.generateKey()
+        generator.init(spec)
+        generator.generateKey()
     }
     val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
