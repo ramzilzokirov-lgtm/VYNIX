@@ -495,7 +495,7 @@ private fun searchAppleMusicCatalog(query: String, developerToken: String): List
             val preview = (0 until previews.length()).firstNotNullOfOrNull { previews.optJSONObject(it)?.optString("url")?.takeIf(String::isNotBlank) }
                 ?: return@mapNotNull null
             val artwork = attributes.optJSONObject("artwork")?.optString("url")?.takeIf(String::isNotBlank)
-                ?.replace("{w}", "600").replace("{h}", "600")
+                ?.replace("{w}", "600")?.replace("{h}", "600")
             val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
             AudioTrack(
                 id = id.hashCode().toLong(),
