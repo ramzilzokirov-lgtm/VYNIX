@@ -51,6 +51,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
+    private static volatile MainActivity activeInstance;
     private static final int BG = Color.rgb(24, 14, 31), PANEL = Color.rgb(48, 31, 57), PANEL2 = Color.rgb(65, 42, 75);
     private int GOLD = Color.rgb(220, 166, 255);
     private static final int TEXT = Color.rgb(255, 246, 255), MUTED = Color.rgb(202, 178, 211);
@@ -129,6 +130,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        activeInstance=this;
         applySavedAccent();
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
@@ -138,11 +140,11 @@ public class MainActivity extends AppCompatActivity {
         mediaSession=new android.media.session.MediaSession(this,"VYNIX");
         mediaSession.setFlags(android.media.session.MediaSession.FLAG_HANDLES_MEDIA_BUTTONS|android.media.session.MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
         mediaSession.setCallback(new android.media.session.MediaSession.Callback(){
-            @Override public void onPlay(){if(player!=null)player.play();}
-            @Override public void onPause(){if(player!=null)player.pause();}
-            @Override public void onSkipToNext(){if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();else if(currentIndex+1<tracks.size())playTrack(currentIndex+1);}
-            @Override public void onSkipToPrevious(){if(player!=null&&player.hasPreviousMediaItem())player.seekToPreviousMediaItem();else if(currentIndex>0)playTrack(currentIndex-1);}
-            @Override public void onSeekTo(long pos){if(player!=null)player.seekTo(pos);}
+            @Override public void onPlay(){runOnUiThread(()->{if(player!=null)player.play();refreshMini();refreshMediaNotification();});}
+            @Override public void onPause(){runOnUiThread(()->{if(player!=null)player.pause();refreshMini();refreshMediaNotification();});}
+            @Override public void onSkipToNext(){runOnUiThread(()->{if(currentIndex+1<tracks.size())playTrack(currentIndex+1);else if(!tracks.isEmpty())playTrack(0);});}
+            @Override public void onSkipToPrevious(){runOnUiThread(()->{if(player!=null&&player.getCurrentPosition()>3000)player.seekTo(0);else if(currentIndex>0)playTrack(currentIndex-1);else if(!tracks.isEmpty())playTrack(tracks.size()-1);});}
+            @Override public void onSeekTo(long pos){runOnUiThread(()->{if(player!=null){player.seekTo(pos);refreshMediaNotification();}});}
         });
         mediaSession.setActive(true);
         player = new ExoPlayer.Builder(this).build();
@@ -609,9 +611,24 @@ public class MainActivity extends AppCompatActivity {
     }
     public static class PlaybackActionReceiver extends BroadcastReceiver {
         @Override public void onReceive(Context context,Intent intent){
-            Intent i=new Intent(context,MainActivity.class).setAction(intent.getAction()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            context.startActivity(i);
+            MainActivity activity=activeInstance;
+            if(activity!=null&&!activity.isFinishing()&&intent!=null){
+                String action=intent.getAction();
+                activity.runOnUiThread(()->activity.handleMediaAction(action));
+                return;
+            }
+            Intent launch=new Intent(context,MainActivity.class).setAction(intent==null?null:intent.getAction()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            context.startActivity(launch);
         }
+    }
+    private void handleMediaAction(String action){
+        if("app.vynix.MEDIA_TOGGLE".equals(action))togglePlayback();
+        else if("app.vynix.MEDIA_NEXT".equals(action)){
+            if(currentIndex+1<tracks.size())playTrack(currentIndex+1);else if(!tracks.isEmpty())playTrack(0);
+        }else if("app.vynix.MEDIA_PREVIOUS".equals(action)){
+            if(player!=null&&player.getCurrentPosition()>3000)player.seekTo(0);else if(currentIndex>0)playTrack(currentIndex-1);else if(!tracks.isEmpty())playTrack(tracks.size()-1);
+        }
+        refreshMini();syncPlaybackButtons();refreshMediaNotification();
     }
     @Override protected void onNewIntent(Intent intent){
         super.onNewIntent(intent);if(intent==null||intent.getAction()==null)return;
@@ -760,5 +777,5 @@ public class MainActivity extends AppCompatActivity {
 
     @Override protected void onResume(){super.onResume();if(player!=null){refreshMini();syncPlaybackButtons();refreshMediaNotification();}}
 
-    @Override protected void onDestroy(){apiExecutor.shutdownNow();if(player!=null)player.release();if(mediaSession!=null){mediaSession.setActive(false);mediaSession.release();}if(notificationManager!=null)notificationManager.cancel(PLAYBACK_NOTIFICATION_ID);super.onDestroy();}
+    @Override protected void onDestroy(){if(activeInstance==this)activeInstance=null;visualizerHandler.removeCallbacks(visualizerTick);apiExecutor.shutdownNow();if(player!=null)player.release();if(mediaSession!=null){mediaSession.setActive(false);mediaSession.release();}if(notificationManager!=null)notificationManager.cancel(PLAYBACK_NOTIFICATION_ID);super.onDestroy();}
 }
