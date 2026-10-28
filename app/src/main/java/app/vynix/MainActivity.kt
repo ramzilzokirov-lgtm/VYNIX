@@ -72,7 +72,7 @@ private val BackgroundPalettes = listOf(
     Triple("Чёрный", 0xFF484452, 0xFF08080B)
 )
 
-data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве") {
+data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве", val isPreview: Boolean = false) {
     val key: String get() = uri.toString()
 }
 
@@ -94,8 +94,9 @@ class MainActivity : ComponentActivity() {
         val c = controller ?: return
         c.setMediaItems(tracks.map { t ->
             MediaItem.Builder().setUri(t.uri).setMediaId(t.key).setMediaMetadata(
-                MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).setAlbumTitle(t.album).build()
-            ).build()
+                MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).setAlbumTitle(t.album)
+                    .setArtworkUri(t.artworkUrl?.let(Uri::parse)).build()
+            ).setTag(t).build()
         }, index, 0L)
         c.prepare()
         c.play()
@@ -213,6 +214,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var isPlaying by remember { mutableStateOf(false) }
     var currentTitle by remember { mutableStateOf("Выбери трек") }
     var currentArtist by remember { mutableStateOf("Твоя музыка начинается здесь") }
+    var currentArtwork by remember { mutableStateOf<String?>(null) }
+    var currentIsPreview by remember { mutableStateOf(false) }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var fullPlayerOpen by remember { mutableStateOf(false) }
@@ -223,6 +226,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentTitle = mediaItem?.mediaMetadata?.title?.toString() ?: "Выбери трек"
                 currentArtist = mediaItem?.mediaMetadata?.artist?.toString() ?: "Твоя музыка начинается здесь"
+                currentArtwork = mediaItem?.mediaMetadata?.artworkUri?.toString()
+                currentIsPreview = (mediaItem?.localConfiguration?.tag as? AudioTrack)?.isPreview == true
                 position = 0L
                 duration = c?.duration?.coerceAtLeast(0L) ?: 0L
                 val key = mediaItem?.mediaId
@@ -252,7 +257,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         Scaffold(containerColor = backgroundColor, bottomBar = {
             Column(Modifier.background(backgroundColor)) {
                 if (currentPlayer?.currentMediaItem != null) {
-                    MiniPlayer(currentTitle, currentArtist, isPlaying, position, duration,
+                    MiniPlayer(currentTitle, currentArtist, currentArtwork, isPlaying, position, duration,
                         onOpen = { fullPlayerOpen = true },
                         onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer?.play() },
                         onNext = { currentPlayer?.seekToNextMediaItem() },
@@ -370,7 +375,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 
     if (fullPlayerOpen && currentPlayer?.currentMediaItem != null) {
         FullPlayer(
-            title = currentTitle, artist = currentArtist, playing = isPlaying, position = position, duration = duration,
+            title = currentTitle, artist = currentArtist, artworkUrl = currentArtwork, isPreview = currentIsPreview,
+            playing = isPlaying, position = position, duration = duration,
             onClose = { fullPlayerOpen = false },
             onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer.play() },
             onPrevious = { currentPlayer.seekToPreviousMediaItem() },
@@ -488,11 +494,11 @@ private fun TrackRow(track: AudioTrack, favorite: Boolean, onClick: () -> Unit, 
 }
 
 @Composable
-private fun MiniPlayer(title: String, artist: String, playing: Boolean, position: Long, duration: Long, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
+private fun MiniPlayer(title: String, artist: String, artworkUrl: String?, playing: Boolean, position: Long, duration: Long, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
     var dragging by remember { mutableFloatStateOf(-1f) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp).clip(RoundedCornerShape(20.dp)).background(SurfaceB).animateContentSize()) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 12.dp, end = 6.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543)))), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.GraphicEq, null, tint = White) }
+            Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543)))), contentAlignment = Alignment.Center) { if (artworkUrl != null) AsyncImage(model = artworkUrl, contentDescription = "Обложка трека", modifier = Modifier.fillMaxSize()) else Icon(Icons.Rounded.GraphicEq, null, tint = White) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(artist, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             IconButton(onClick = onToggle) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = White) }
@@ -503,18 +509,22 @@ private fun MiniPlayer(title: String, artist: String, playing: Boolean, position
 }
 
 @Composable
-private fun FullPlayer(title: String, artist: String, playing: Boolean, position: Long, duration: Long, onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
+private fun FullPlayer(title: String, artist: String, artworkUrl: String?, isPreview: Boolean, playing: Boolean, position: Long, duration: Long, onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
     var dragging by remember { mutableFloatStateOf(-1f) }
     androidx.activity.compose.BackHandler(onBack = onClose)
     androidx.compose.ui.window.Dialog(onDismissRequest = onClose, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF49305F), Color(0xFF100E17)))).padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val backdrop = Modifier.fillMaxSize()
+            if (artworkUrl != null) AsyncImage(model = artworkUrl, contentDescription = null, modifier = backdrop, contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xCC49305F), Color(0xF2100E17)))))
+            Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Свернуть плеер", tint = White, modifier = Modifier.size(32.dp)) }
-                Text("СЕЙЧАС ИГРАЕТ", Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.labelMedium)
+                Column(Modifier.weight(1f)) { Text("СЕЙЧАС ИГРАЕТ", color = Muted, style = MaterialTheme.typography.labelMedium); if (isPreview) Text("30-секундный фрагмент · источник не отдаёт полный трек", color = Color(0xFFFFD180), style = MaterialTheme.typography.labelSmall, maxLines = 2) }
                 Icon(Icons.Rounded.GraphicEq, "VYNIX", tint = Lilac)
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543), Color(0xFF17121F)))), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Album, null, tint = White.copy(alpha = .9f), modifier = Modifier.fillMaxSize(.42f)) }
+                Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543), Color(0xFF17121F)))), contentAlignment = Alignment.Center) { if (artworkUrl != null) AsyncImage(model = artworkUrl, contentDescription = "Обложка $title", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop) else Icon(Icons.Rounded.Album, null, tint = White.copy(alpha = .9f), modifier = Modifier.fillMaxSize(.42f)) }
                 Spacer(Modifier.height(30.dp))
                 Text(title, color = White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(6.dp))
@@ -532,6 +542,7 @@ private fun FullPlayer(title: String, artist: String, playing: Boolean, position
                     IconButton(onClick = onToggle, modifier = Modifier.size(76.dp).clip(CircleShape).background(Lilac)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Пауза" else "Воспроизвести", tint = Ink, modifier = Modifier.size(46.dp)) }
                     IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, "Следующий трек", tint = White, modifier = Modifier.size(34.dp)) }
                 }
+            }
             }
         }
     }
@@ -571,7 +582,7 @@ private fun searchMusicServices(query: String): List<AudioTrack> {
             val title = item.optString("trackName", "Без названия")
             val artist = item.optString("artistName", "Неизвестный исполнитель")
             val key = "remote:$preview"
-            found[key] = AudioTrack(item.optLong("trackId", key.hashCode().toLong()), Uri.parse(preview), title, artist, item.optString("collectionName", ""), item.optLong("trackTimeMillis", 0L), item.optString("artworkUrl100").takeIf { it.startsWith("http") }?.replace("100x100bb", "600x600bb"), "Apple Music")
+            found[key] = AudioTrack(item.optLong("trackId", key.hashCode().toLong()), Uri.parse(preview), title, artist, item.optString("collectionName", ""), item.optLong("trackTimeMillis", 0L), item.optString("artworkUrl100").takeIf { it.startsWith("http") }?.replace("100x100bb", "600x600bb"), "Apple Music · превью", isPreview = true)
         }
     }
     request("https://api.deezer.com/search?q=$encoded&limit=25") { root ->
@@ -584,7 +595,7 @@ private fun searchMusicServices(query: String): List<AudioTrack> {
             val artist = item.optJSONObject("artist")?.optString("name") ?: "Неизвестный исполнитель"
             val albumObj = item.optJSONObject("album")
             val key = "remote:$preview"
-            if (!found.containsKey(key)) found[key] = AudioTrack(item.optLong("id", key.hashCode().toLong()), Uri.parse(preview), title, artist, albumObj?.optString("title") ?: "", 30000L, albumObj?.optString("cover_xl")?.takeIf { it.startsWith("http") }, "Deezer")
+            if (!found.containsKey(key)) found[key] = AudioTrack(item.optLong("id", key.hashCode().toLong()), Uri.parse(preview), title, artist, albumObj?.optString("title") ?: "", 30000L, albumObj?.optString("cover_xl")?.takeIf { it.startsWith("http") }, "Deezer · превью", isPreview = true)
         }
     }
     return found.values.toList()
