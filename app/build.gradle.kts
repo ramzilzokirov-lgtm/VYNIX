@@ -7,14 +7,16 @@ plugins {
 android {
     namespace = "app.vynix"
     compileSdk = 35
+    buildFeatures { compose = true; buildConfig = true }
     defaultConfig {
+    val appleMusicDeveloperToken = providers.gradleProperty("APPLE_MUSIC_DEVELOPER_TOKEN").orElse(providers.environmentVariable("APPLE_MUSIC_DEVELOPER_TOKEN")).getOrElse("")
+    buildConfigField("String", "APPLE_MUSIC_DEVELOPER_TOKEN", "\\"${appleMusicDeveloperToken.replace("\\", "\\\\").replace("\"", "\\\"")}\\"")
         applicationId = "app.vynix"
         minSdk = 26
         targetSdk = 35
         versionCode = 2
         versionName = "2.0.0-alpha"
     }
-    buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
