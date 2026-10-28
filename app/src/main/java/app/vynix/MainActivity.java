@@ -121,10 +121,10 @@ public class MainActivity extends AppCompatActivity {
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(BG); root.setClipToPadding(false);
         setContentView(root);
         FrameLayout top = new FrameLayout(this);
-        TextView brand = label("VYNIX", 17, TEXT, true); brand.setLetterSpacing(.22f);
+        TextView brand = label("VYNIX ✦", 18, TEXT, true); brand.setLetterSpacing(.22f);
         FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-2, dp(58), Gravity.TOP|Gravity.START);
         bp.leftMargin = dp(22); brand.setGravity(Gravity.CENTER_VERTICAL); top.addView(brand, bp);
-        TextView add = label("+", 25, GOLD, false); add.setGravity(Gravity.CENTER); add.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33FFFFFF),round(0x33251F3A,17,0x33B89CFF,1),null)); add.setOnClickListener(v->{v.animate().rotation(90f).setDuration(180).withEndAction(()->v.animate().rotation(0f).setDuration(160).start()).start();chooseAudio();});
+        TextView add = label("＋", 25, Color.WHITE, false); add.setGravity(Gravity.CENTER); add.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x44FFFFFF),round(0xFFFF78C8,17,0x88FFD5F3,1),null)); add.setOnClickListener(v->{v.animate().rotation(90f).setDuration(180).withEndAction(()->v.animate().rotation(0f).setDuration(160).start()).start();chooseAudio();});
         FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP|Gravity.END); ap.rightMargin=dp(12); top.addView(add, ap); add.setOnClickListener(v -> chooseAudio());
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(50)));
         ScrollView scroller = new ScrollView(this); scroller.setFillViewport(true);
@@ -174,7 +174,7 @@ public class MainActivity extends AppCompatActivity {
             right.addView(albumTile("the autocollants","",0xFFFFA6C9,0xFF7D3F7B,"♫"),new LinearLayout.LayoutParams(dp(104),dp(104)));
             View gapr=new View(this);right.addView(gapr,new LinearLayout.LayoutParams(1,dp(28)));
             right.addView(albumTile("VYNIX","after dark",0xFFFFC66D,0xFF9C426E,"✦"),new LinearLayout.LayoutParams(dp(92),dp(92)));
-            TextView bigPlay=label(player!=null&&player.isPlaying()?"Ⅱ":"▶",34,Color.WHITE,true);bigPlay.setGravity(Gravity.CENTER);bigPlay.setBackground(round(0xFF654174,100,0,0));LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(dp(106),dp(106));bp.topMargin=dp(8);right.addView(bigPlay,bp);bigPlay.setOnClickListener(v->{if(tracks.isEmpty())chooseAudio();else togglePlayback();bigPlay.setText(player!=null&&player.isPlaying()?"Ⅱ":"▶");});
+            TextView bigPlay=label(player!=null&&player.isPlaying()?"Ⅱ":"▶",34,Color.WHITE,true);bigPlay.setGravity(Gravity.CENTER);bigPlay.setTextColor(0xFF3A1537);bigPlay.setBackground(round(0xFFFF78C8,100,0,0));bigPlay.setElevation(dp(10));LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(dp(106),dp(106));bp.topMargin=dp(8);right.addView(bigPlay,bp);bigPlay.setOnClickListener(v->{if(tracks.isEmpty())chooseAudio();else togglePlayback();bigPlay.setText(player!=null&&player.isPlaying()?"Ⅱ":"▶");});
             collage.addView(right,new LinearLayout.LayoutParams(0,-2,0.9f));content.addView(collage);gap(18);
             LinearLayout quick=new LinearLayout(this);quick.setOrientation(LinearLayout.HORIZONTAL);
             quick.addView(shortcutCard("◴","Недавние",tracks.size()+" треков",0),new LinearLayout.LayoutParams(0,dp(76),1));
