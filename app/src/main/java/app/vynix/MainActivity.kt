@@ -389,7 +389,7 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
         loading = true
         error = null
         try {
-            val found = withContext(Dispatchers.IO) { searchOpenAudio(normalized) }
+            val found = withContext(Dispatchers.IO) { searchMusicServices(normalized) }
             results = found
             if (found.isEmpty()) error = "В открытом каталоге не нашлось доступных полных аудиозаписей. Попробуй другое название."
         } catch (e: Exception) {
@@ -466,90 +466,6 @@ private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
             }
         }
     }
-}
-
-private fun searchOpenAudio(query: String): List<AudioTrack> {
-    fun getText(url: String, timeoutMs: Int = 12000): String {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = timeoutMs
-        connection.readTimeout = timeoutMs
-        connection.setRequestProperty("User-Agent", "VYNIX/0.1 (Android music player)")
-        return try {
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw IllegalStateException("Catalog HTTP $code")
-            body
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    val safeQuery = query.replace("\\", " ").replace("\"", " ").trim()
-    val searchExpression = "mediatype:audio AND (title:\"$safeQuery\" OR creator:\"$safeQuery\")"
-    val searchUrl = "https://archive.org/advancedsearch.php?q=${URLEncoder.encode(searchExpression, "UTF-8")}" +
-        "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&rows=18&page=1&output=json"
-    val docs = JSONObject(getText(searchUrl)).optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
-    val output = mutableListOf<AudioTrack>()
-    val seen = HashSet<String>()
-
-    for (i in 0 until minOf(docs.length(), 18)) {
-        val doc = docs.optJSONObject(i) ?: continue
-        val identifier = doc.optString("identifier").takeIf { it.isNotBlank() && it != "null" } ?: continue
-        if (!seen.add(identifier)) continue
-        val title = doc.optString("title").takeIf { it.isNotBlank() && it != "null" } ?: continue
-        val creatorValue = doc.opt("creator")
-        val artist = when (creatorValue) {
-            is JSONArray -> (0 until creatorValue.length()).mapNotNull { creatorValue.optString(it).takeIf(String::isNotBlank) }.joinToString(", ")
-            is String -> creatorValue
-            else -> ""
-        }.ifBlank { "Неизвестный исполнитель" }
-
-        try {
-            val metadata = JSONObject(getText("https://archive.org/metadata/${URLEncoder.encode(identifier, "UTF-8")}", 10000))
-            val files = metadata.optJSONArray("files") ?: continue
-            var chosen: JSONObject? = null
-            for (j in 0 until files.length()) {
-                val file = files.optJSONObject(j) ?: continue
-                val name = file.optString("name")
-                val format = file.optString("format").lowercase()
-                val lower = name.lowercase()
-                val isAudio = lower.endsWith(".mp3") || lower.endsWith(".m4a") ||
-                    lower.endsWith(".ogg") || lower.endsWith(".oga") || lower.endsWith(".flac") ||
-                    lower.endsWith(".wav") || format.contains("mpeg") || format.contains("ogg vorbis") ||
-                    format.contains("flac") || format.contains("wave")
-                if (isAudio && !lower.endsWith(".xml") && !lower.endsWith(".torrent") &&
-                    !lower.contains("sample") && !lower.contains("preview")) {
-                    chosen = file
-                    if (lower.endsWith(".mp3")) break
-                }
-            }
-            val file = chosen ?: continue
-            val fileName = file.optString("name")
-            if (fileName.isBlank()) continue
-            val encodedPath = fileName.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
-            val audioUrl = "https://archive.org/download/${URLEncoder.encode(identifier, "UTF-8")}/$encodedPath"
-            val durationSeconds = file.optString("length").toDoubleOrNull()?.toLong() ?: 0L
-            val artwork = "https://archive.org/services/img/${URLEncoder.encode(identifier, "UTF-8")}"
-            output.add(
-                AudioTrack(
-                    id = identifier.hashCode().toLong(),
-                    uri = Uri.parse(audioUrl),
-                    title = title,
-                    artist = artist,
-                    album = "Internet Archive",
-                    duration = durationSeconds * 1000L,
-                    artworkUrl = artwork,
-                    source = "Internet Archive",
-                    isPreview = false
-                )
-            )
-        } catch (_: Exception) {
-            // Skip items whose metadata has no playable audio file; keep the rest of the search usable.
-        }
-        if (output.size >= 12) break
-    }
-    return output
 }
 
 private fun Int.spCompat() = this.sp
