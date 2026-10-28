@@ -63,6 +63,54 @@ public class MainActivity extends AppCompatActivity {
     private static final String API = "https://vynix-api.onrender.com";
     private ActivityResultLauncher<String[]> audioPicker;
 
+    private final Handler visualizerHandler = new Handler(Looper.getMainLooper());
+    private final Runnable visualizerTick = new Runnable() {
+        @Override public void run() {
+            if (content != null && !isFinishing()) {
+                if (content.findViewWithTag("vynix_live_visualizer") != null) {
+                    View v = content.findViewWithTag("vynix_live_visualizer");
+                    if (v != null) v.invalidate();
+                }
+                visualizerHandler.postDelayed(this, 40);
+            }
+        }
+    };
+
+    private class LiveMusicBackdrop extends View {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final long started = System.currentTimeMillis();
+        LiveMusicBackdrop() { super(MainActivity.this); setTag("vynix_live_visualizer"); setLayerType(View.LAYER_TYPE_HARDWARE, null); }
+        @Override protected void onDraw(android.graphics.Canvas canvas) {
+            super.onDraw(canvas);
+            float w=getWidth(), h=getHeight();
+            if(w<=0||h<=0)return;
+            float t=(System.currentTimeMillis()-started)/1000f;
+            boolean active=player!=null&&player.isPlaying();
+            paint.setShader(new android.graphics.LinearGradient(0,0,w,h,
+                new int[]{0xFF41234F,0xFFB65B9F,0xFF35204A},null,android.graphics.Shader.TileMode.CLAMP));
+            canvas.drawRoundRect(0,0,w,h,dp(28),dp(28),paint);
+            paint.setShader(null);
+            for(int i=0;i<4;i++){
+                float phase=t*(active?0.75f:0.18f)+i*1.65f;
+                float radius=dp(34)+(float)Math.sin(phase)*dp(active?19:5);
+                int color=new int[]{0x55FF83D0,0x556FA8FF,0x66D8A0FF,0x44FFD08A}[i];
+                paint.setColor(color);
+                canvas.drawCircle(w*(0.18f+i*0.23f)+(float)Math.sin(phase*.7f)*dp(active?20:5),
+                    h*.46f+(float)Math.cos(phase)*dp(active?18:4),radius,paint);
+            }
+            paint.setColor(0x22FFFFFF); canvas.drawRoundRect(0,0,w,h,dp(28),dp(28),paint);
+            int bars=38; float gap=w/(bars*1.65f); float barW=Math.max(dp(2),gap*.65f);
+            for(int i=0;i<bars;i++){
+                float wave=(float)Math.abs(Math.sin(i*.43+t*(active?4.2f:.45f))*(.35+.65*Math.abs(Math.sin(i*.17-t*(active?1.7f:.12f)))));
+                float bh=dp(5)+(h*.48f*wave)*(active?1f:.22f);
+                paint.setColor(i%4==0?0xFFFFB7E5:0xCCFFFFFF);
+                float x=i*gap+dp(8);
+                canvas.drawRoundRect(x,(h-bh)/2f,x+barW,(h+bh)/2f,barW,barW,paint);
+            }
+            if(active) postInvalidateDelayed(40);
+        }
+    }
+
     private static class Track {
         Uri uri; String title;
         Track(Uri u, String t) { uri = u; title = t; }
@@ -165,6 +213,9 @@ public class MainActivity extends AppCompatActivity {
             addText("волна", 38, TEXT, true);
             TextView bell=label("♧",25,GOLD,true);bell.setGravity(Gravity.CENTER);LinearLayout.LayoutParams bellp=new LinearLayout.LayoutParams(dp(42),dp(42));bellp.gravity=Gravity.END;bellp.topMargin=-dp(86);content.addView(bell,bellp);bell.setOnClickListener(v->showProfileOption("Уведомления"));
             gap(12);
+            LiveMusicBackdrop liveBackdrop=new LiveMusicBackdrop();
+            LinearLayout.LayoutParams liveParams=new LinearLayout.LayoutParams(-1,dp(116));liveParams.bottomMargin=dp(14);content.addView(liveBackdrop,liveParams);
+            TextView liveCaption=label("✦  "+(player!=null&&player.isPlaying()?"СЕЙЧАС ЗВУЧИТ":"ТВОЯ ВОЛНА"),11,0xFFFFC7F4,true);liveCaption.setLetterSpacing(.12f);liveCaption.setPadding(dp(4),0,0,dp(8));content.addView(liveCaption);
             TextView welcome=label("ТВОЙ МУЗЫКАЛЬНЫЙ МИР",10,0xFFE5B9FF,true);welcome.setLetterSpacing(.16f);LinearLayout.LayoutParams welp=new LinearLayout.LayoutParams(-1,dp(22));welp.bottomMargin=dp(2);content.addView(welcome,welp);LinearLayout collage=new LinearLayout(this);collage.setGravity(Gravity.CENTER_VERTICAL);collage.setOrientation(LinearLayout.HORIZONTAL);
             LinearLayout left=new LinearLayout(this);left.setOrientation(LinearLayout.VERTICAL);left.setGravity(Gravity.CENTER_VERTICAL);
             View coverA=albumTile("the autocollants","apple vines",0xFFB55DAD,0xFF3B1B55,"♫");left.addView(coverA,new LinearLayout.LayoutParams(dp(148),dp(184)));
