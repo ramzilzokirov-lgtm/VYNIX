@@ -294,7 +294,7 @@ public class MainActivity extends AppCompatActivity {
                 if (name.isEmpty()) { Toast.makeText(this, "Введи название плейлиста", Toast.LENGTH_SHORT).show(); return; }
                 JSONObject data = playlistsData();
                 if (data.has(name)) { Toast.makeText(this, "Такой плейлист уже есть", Toast.LENGTH_SHORT).show(); return; }
-                data.put(name, new JSONArray());
+                try { data.put(name, new JSONArray()); } catch (org.json.JSONException e) { Toast.makeText(this, "Не удалось создать плейлист", Toast.LENGTH_SHORT).show(); return; }
                 libraryPrefs().edit().putString("playlists", data.toString()).apply();
                 render();
             }).show();
@@ -308,7 +308,7 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < items.length(); i++) if (key.equals(items.optString(i))) {
             Toast.makeText(this, "Трек уже в плейлисте", Toast.LENGTH_SHORT).show(); return;
         }
-        items.put(key); data.put(name, items);
+        try { items.put(key); data.put(name, items); } catch (org.json.JSONException e) { Toast.makeText(this, "Не удалось сохранить трек", Toast.LENGTH_SHORT).show(); return; }
         libraryPrefs().edit().putString("playlists", data.toString()).apply();
         Toast.makeText(this, "Добавлено в «" + name + "»", Toast.LENGTH_SHORT).show();
         if (activeTab.equals("Плейлист:" + name)) render();
