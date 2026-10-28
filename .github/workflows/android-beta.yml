@@ -59,18 +59,25 @@ jobs:
         working-directory: ${{ runner.temp }}/riff-android/android
         run: ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest
 
-      - name: Generate APK checksums
+      - name: Package corresponding modified source
+        run: |
+          cd "$RUNNER_TEMP/riff-android"
+          zip -qr "$RUNNER_TEMP/riff-android/android/app/build/outputs/apk/debug/VYNIX-modified-source.zip" android \
+            -x 'android/.gradle/*' 'android/app/build/*'
+
+      - name: Generate APK and source checksums
         working-directory: ${{ runner.temp }}/riff-android/android
         run: |
           cd app/build/outputs/apk/debug
-          sha256sum *-debug.apk > SHA256SUMS.txt
+          sha256sum *-debug.apk VYNIX-modified-source.zip > SHA256SUMS.txt
 
-      - name: Upload VYNIX APKs
+      - name: Upload VYNIX APKs and corresponding source
         uses: actions/upload-artifact@v4
         with:
           name: VYNIX-Beta-APK
           path: |
             ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/*-debug.apk
+            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/VYNIX-modified-source.zip
             ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
