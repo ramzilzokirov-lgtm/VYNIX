@@ -115,6 +115,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var permissionGranted by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Главная") }
     var search by remember { mutableStateOf("") }
+    var jamendoClientId by remember { mutableStateOf("") }
     var onlineResults by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var searchingOnline by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(setOf<String>()) }
@@ -142,6 +143,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     LaunchedEffect(Unit) {
         paletteIndex = prefs.getInt("background_palette", 0).coerceIn(0, BackgroundPalettes.lastIndex)
         customTopHex = prefs.getString("background_custom_hex", "") ?: ""
+        jamendoClientId = prefs.getString("jamendo_client_id", "") ?: ""
         animationEnabled = prefs.getBoolean("background_animation", true)
         animationSpeed = prefs.getFloat("background_speed", 1f).coerceIn(0.5f, 2f)
     }
@@ -205,7 +207,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         else {
             kotlinx.coroutines.delay(450)
             searchingOnline = true
-            onlineResults = withContext(Dispatchers.IO) { searchMusicServices(query) }
+            onlineResults = withContext(Dispatchers.IO) { searchMusicServices(query, jamendoClientId.trim()) }
             searchingOnline = false
         }
     }
@@ -283,7 +285,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     tab == "Главная" -> HomeScreen(tracks.size, favorites.size, recent.size, onOpen = { tab = it }, onScan = { refresh++ }, onPlay = { if (tracks.isNotEmpty()) onPlay(tracks, 0) })
                     tab == "Медиатека" && selectedPlaylist == null -> LibraryScreen(tracks, favorites, playlists, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onPlay = onPlay, onCreate = { createPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it; tab = "Плейлисты" }, onAdd = { addTarget = it })
                     tab == "Поиск" -> {
-                        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), placeholder = { Text("Ищи в музыкальных сервисах…") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(18.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
+                        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), placeholder = { Text("Ищи бесплатную музыку…") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(18.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
+                        OutlinedTextField(value = jamendoClientId, onValueChange = { jamendoClientId = it; prefs.edit().putString("jamendo_client_id", it).apply() }, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp), placeholder = { Text("Jamendo Client ID (для полных треков)") }, leadingIcon = { Icon(Icons.Rounded.Key, null) }, singleLine = true, shape = RoundedCornerShape(18.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
+                        Text("Jamendo: бесплатные полные треки · нужен Client ID", modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp), color = Muted, style = MaterialTheme.typography.labelSmall)
                         Column(Modifier.weight(1f)) {
                             if (searchingOnline) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Lilac)
                             if (search.trim().length < 2) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Поиск по музыкальным сервисам", color = Muted) }
@@ -554,7 +558,7 @@ private fun formatPlayerTime(milliseconds: Long): String {
 }
 
 
-private fun searchMusicServices(query: String): List<AudioTrack> {
+private fun searchMusicServices(query: String, jamendoClientId: String): List<AudioTrack> {
     val encoded = URLEncoder.encode(query, "UTF-8")
     val found = LinkedHashMap<String, AudioTrack>()
     fun request(url: String, parser: (JSONObject) -> Unit) {
@@ -596,6 +600,24 @@ private fun searchMusicServices(query: String): List<AudioTrack> {
             val albumObj = item.optJSONObject("album")
             val key = "remote:$preview"
             if (!found.containsKey(key)) found[key] = AudioTrack(item.optLong("id", key.hashCode().toLong()), Uri.parse(preview), title, artist, albumObj?.optString("title") ?: "", 30000L, albumObj?.optString("cover_xl")?.takeIf { it.startsWith("http") }, "Deezer · превью", isPreview = true)
+        }
+    }
+    if (jamendoClientId.isNotBlank()) {
+        request("https://api.jamendo.com/v3.0/tracks/?client_id=${URLEncoder.encode(jamendoClientId, "UTF-8")}&format=json&limit=25&search=$encoded&audioformat=mp32&imagesize=600&include=licenses") { root ->
+            val results = root.optJSONArray("results") ?: JSONArray()
+            for (i in 0 until results.length()) {
+                val item = results.optJSONObject(i) ?: continue
+                val audio = item.optString("audio")
+                if (audio.isBlank() || audio == "null") continue
+                val title = item.optString("name", "Без названия")
+                val artist = item.optString("artist_name", "Неизвестный исполнитель")
+                val key = "jamendo:${item.optString("id")}"
+                val artwork = item.optString("image").takeIf { it.startsWith("http") }
+                    ?: item.optString("album_image").takeIf { it.startsWith("http") }
+                found[key] = AudioTrack(item.optLong("id", key.hashCode().toLong()), Uri.parse(audio), title, artist,
+                    item.optString("album_name", ""), item.optLong("duration", 0L) * 1000L, artwork,
+                    "Jamendo · полный трек", isPreview = false)
+            }
         }
     }
     return found.values.toList()
