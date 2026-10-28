@@ -19,7 +19,7 @@ text = gradle.read_text(encoding="utf-8")
 text = text.replace("applicationId 'io.github.rootscripts.riff'", "applicationId 'app.vynix'")
 text = re.sub(r"versionCode\s+1", "versionCode 5", text, count=1)
 text = re.sub(r"versionName\s+'[^']+'", "versionName '0.1.0-beta2'", text, count=1)
-text = text.replace("ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }", "ndk { abiFilters 'arm64-v8a' }")
+text = text.replace("ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }", "")
 text = text.replace("include 'arm64-v8a', 'armeabi-v7a', 'x86_64'\n            universalApk true", "include 'arm64-v8a'\n            universalApk false")
 gradle.write_text(text, encoding="utf-8")
 
