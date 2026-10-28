@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import coil.compose.AsyncImage
@@ -52,14 +54,14 @@ import org.json.JSONObject
 private val Ink = Color(0xFF100E17)
 private val SurfaceA = Color(0xFF1C1926)
 private val SurfaceB = Color(0xFF282235)
-private val Lilac = Color(0xFFCE9BFF)
+private val Lilac = Color(0xFFFFD21F)
 private val Muted = Color(0xFFA8A1B7)
 private val White = Color(0xFFF8F4FF)
 private val BackgroundPalettes = listOf(
-    Triple("Лавандовый", 0xFF6A3C8B, 0xFF100E17),
+    Triple("Жёлто-чёрный", 0xFFFFD21F, 0xFF08090B),
     Triple("Бирюзовый", 0xFF087E8B, 0xFF081317),
     Triple("Рубиновый", 0xFF8B2635, 0xFF160B12),
-    Triple("Золотой", 0xFF8A6428, 0xFF15110A),
+    Triple("Золотой", 0xFFFFC928, 0xFF0D0D0B),
     Triple("Синий лёд", 0xFF315C9B, 0xFF0B101A),
     Triple("Изумрудный", 0xFF28734E, 0xFF09140F),
     Triple("Чёрный", 0xFF484452, 0xFF08080B)
@@ -125,6 +127,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     val prefs = remember { context.getSharedPreferences("vynix_compose_state", 0) }
     val ambientTransition = rememberInfiniteTransition(label = "ambient-background")
     val ambientAlpha by ambientTransition.animateFloat(initialValue = 0.08f, targetValue = if (animationEnabled) 0.28f else 0.08f, animationSpec = infiniteRepeatable(animation = tween((4200 / animationSpeed.coerceIn(0.5f, 2f)).toInt()), repeatMode = RepeatMode.Reverse), label = "ambient-glow")
+    val orbX by ambientTransition.animateFloat(initialValue = 0.18f, targetValue = 0.82f, animationSpec = infiniteRepeatable(animation = tween((10500 / animationSpeed.coerceIn(0.5f, 2f)).toInt()), repeatMode = RepeatMode.Reverse), label = "orb-x")
+    val orbY by ambientTransition.animateFloat(initialValue = 0.78f, targetValue = 0.24f, animationSpec = infiniteRepeatable(animation = tween((13200 / animationSpeed.coerceIn(0.5f, 2f)).toInt()), repeatMode = RepeatMode.Reverse), label = "orb-y")
     val selectedPalette = BackgroundPalettes[paletteIndex.coerceIn(0, BackgroundPalettes.lastIndex)]
     val baseTop = remember(paletteIndex, customTopHex) { customTopHex.toColorOrNull() ?: Color(selectedPalette.second) }
     val baseBottom = Color(selectedPalette.third)
@@ -235,7 +239,13 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                 }
             }
         }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).background(Brush.verticalGradient(listOf(glowColor.copy(alpha = ambientAlpha), backgroundColor, backgroundColor.copy(red = (backgroundColor.red * 0.72f), green = (backgroundColor.green * 0.72f), blue = (backgroundColor.blue * 0.72f))))) ) {
+            Column(Modifier.fillMaxSize().padding(padding).drawBehind {
+                if (animationEnabled) {
+                    val radius = size.minDimension * 0.43f
+                    drawCircle(color = glowColor.copy(alpha = 0.22f), radius = radius, center = Offset(size.width * orbX, size.height * orbY))
+                    drawCircle(color = Color(0xFFFFD21F).copy(alpha = 0.13f), radius = radius * 0.82f, center = Offset(size.width * (1f - orbX * 0.72f), size.height * (1f - orbY * 0.62f)))
+                }
+            }.background(Brush.verticalGradient(listOf(glowColor.copy(alpha = ambientAlpha), backgroundColor, backgroundColor.copy(red = (backgroundColor.red * 0.72f), green = (backgroundColor.green * 0.72f), blue = (backgroundColor.blue * 0.72f))))) ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("VYNIX", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = White)
