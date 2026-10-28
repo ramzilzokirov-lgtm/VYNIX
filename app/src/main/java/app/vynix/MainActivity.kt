@@ -228,7 +228,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                         onSeek = { currentPlayer?.seekTo(it) })
                 }
                 NavigationBar(containerColor = SurfaceA, contentColor = White) {
-                    listOf("Главная" to Icons.Rounded.Home, "Медиатека" to Icons.Rounded.LibraryMusic, "Поиск" to Icons.Rounded.Search, "Избранное" to Icons.Rounded.Favorite).forEach { (name, icon) ->
+                    listOf("Главная" to Icons.Rounded.Home, "Медиатека" to Icons.Rounded.LibraryMusic, "Поиск" to Icons.Rounded.Search, "Избранное" to Icons.Rounded.Favorite, "Профиль" to Icons.Rounded.Person).forEach { (name, icon) ->
                         NavigationBarItem(selected = tab == name, onClick = { tab = name; selectedPlaylist = null }, icon = { Icon(icon, null) }, label = { Text(name) }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Lilac, indicatorColor = SurfaceB, selectedTextColor = Lilac, unselectedTextColor = Muted))
                     }
                 }
@@ -239,11 +239,13 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     Column(Modifier.weight(1f)) {
                         Text("VYNIX", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = White)
                         Text("YOUR SOUND. YOUR SPACE.", style = MaterialTheme.typography.labelSmall, color = Lilac, letterSpacing = 2.spCompat())
+                        Text(if (animationEnabled) "LIVE AMBIENT • ON" else "LIVE AMBIENT • OFF", style = MaterialTheme.typography.labelSmall, color = Muted)
                     }
                     Box(Modifier.size(44.dp).clip(CircleShape).background(SurfaceB).clickable { showAppearance = true }, contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Palette, "Настроить фон", tint = Lilac, modifier = Modifier.size(25.dp)) }
                 }
                 when {
                     tab == "Главная" -> HomeScreen(favorites.size, recent.size, onOpen = { tab = it }, onPlay = { tab = "Поиск" })
+                    tab == "Профиль" -> AccountScreen()
                     tab == "Медиатека" && selectedPlaylist == null -> PlaylistLibraryScreen(playlists, onCreate = { createPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it; tab = "Плейлисты" })
                     tab == "Поиск" -> {
                         OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), placeholder = { Text("Ищи бесплатную музыку…") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(18.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Lilac, unfocusedBorderColor = SurfaceB, focusedTextColor = White, unfocusedTextColor = White))
