@@ -1,4 +1,15 @@
-package app.vynix;
+private void refreshMini(){
+        if(miniTitle==null||mini==null)return;
+        boolean playing=player!=null&&player.isPlaying()&&currentIndex>=0&&currentIndex<tracks.size();
+        mini.animate().cancel();
+        if(playing){
+            if(mini.getVisibility()!=View.VISIBLE){mini.setVisibility(View.VISIBLE);mini.setAlpha(0f);mini.setTranslationY(dp(12));mini.animate().alpha(1f).translationY(0f).setDuration(240).setInterpolator(new DecelerateInterpolator(1.5f)).start();}
+        }else if(mini.getVisibility()==View.VISIBLE){
+            mini.animate().alpha(0f).translationY(dp(8)).setDuration(130).withEndAction(()->{if(mini!=null&&!(player!=null&&player.isPlaying())){mini.setVisibility(View.GONE);mini.setAlpha(1f);mini.setTranslationY(0f);}}).start();
+        }else{mini.setVisibility(View.GONE);mini.setAlpha(1f);mini.setTranslationY(0f);}
+        if(currentIndex>=0&&currentIndex<tracks.size()){String nextTitle=tracks.get(currentIndex).title;if(!nextTitle.contentEquals(miniTitle.getText())){miniTitle.animate().cancel();miniTitle.setAlpha(.55f);miniTitle.setTranslationY(dp(4));miniTitle.setText(nextTitle);miniTitle.animate().alpha(1f).translationY(0f).setDuration(220).setInterpolator(new DecelerateInterpolator(1.5f)).start();}}
+        if(playButton!=null){playButton.setText(playing?"Ⅱ":"▶");playButton.animate().cancel();playButton.setScaleX(.82f);playButton.setScaleY(.82f);playButton.animate().scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(new android.view.animation.OvershootInterpolator(1.5f)).start();}
+    }ackage app.vynix;
 
 import android.app.Activity;
 import android.content.Intent;
