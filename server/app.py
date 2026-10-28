@@ -78,6 +78,9 @@ class AccountCredentials(BaseModel):
     username: str = Field(min_length=3, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
     password: str = Field(min_length=8, max_length=128)
 
+class BadgeUpdate(BaseModel):
+    badge: str = Field(pattern=r"^(LISTENER|EARLY|CREATOR|TEAM)$")
+
 def hash_password(password: str, salt: bytes | None = None) -> str:
     salt = salt or secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 310000)
@@ -201,6 +204,27 @@ def my_badges(authorization: str | None = Header(default=None)):
     badge = account["badge"]
     names = {"LISTENER": "Слушатель VYNIX", "EARLY": "Ранний пользователь", "CREATOR": "Создатель плейлистов", "TEAM": "Команда VYNIX"}
     return {"badges": [{"id": badge, "name": names.get(badge, "Пользователь VYNIX")} ]}
+
+@app.put("/v1/admin/accounts/{username}/badge")
+def assign_badge(username: str, payload: BadgeUpdate, x_vynix_admin_key: str | None = Header(default=None)):
+    admin_key = os.environ.get("VYNIX_ADMIN_KEY", "")
+    if not admin_key:
+        raise HTTPException(status_code=503, detail="admin_key_not_configured")
+    if not x_vynix_admin_key or not hmac.compare_digest(x_vynix_admin_key, admin_key):
+        raise HTTPException(status_code=403, detail="forbidden")
+    try:
+        with connect() as conn:
+            row = conn.execute(
+                "UPDATE accounts SET badge=%s WHERE username=%s RETURNING account_id, username, badge",
+                (payload.badge, username.strip().lower())
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="account_not_found")
+            return {"account": row}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="database_unavailable")
 
 @app.get("/v1/profile/{user_id}")
 def get_profile(user_id: str):
