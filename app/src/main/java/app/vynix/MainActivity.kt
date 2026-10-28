@@ -115,6 +115,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var addTarget by remember { mutableStateOf<AudioTrack?>(null) }
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
+    val ambientTransition = rememberInfiniteTransition(label = "ambient-background")
+    val ambientAlpha by ambientTransition.animateFloat(initialValue = 0.10f, targetValue = 0.30f, animationSpec = infiniteRepeatable(animation = tween(4200), repeatMode = RepeatMode.Reverse), label = "ambient-glow")
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("vynix_compose_state", 0) }
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -230,7 +232,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                 }
             }
         }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).background(Brush.verticalGradient(listOf(Ink, Color(0xFF17121F)))) ) {
+            Column(Modifier.fillMaxSize().padding(padding).background(Brush.verticalGradient(listOf(Color(0xFF6A3C8B).copy(alpha = ambientAlpha), Ink, Color(0xFF17121F)))) ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("VYNIX", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = White)
