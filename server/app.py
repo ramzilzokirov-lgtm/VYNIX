@@ -1,7 +1,11 @@
 import os
 import uuid
-from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException
+import base64
+import hashlib
+import hmac
+import secrets
+from datetime import datetime, timezone, timedelta
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
 import psycopg
 from psycopg.rows import dict_row
@@ -29,6 +33,22 @@ def init_db():
           PRIMARY KEY(user_id, item_id)
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS library_items_user_idx ON library_items(user_id)")
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS accounts (
+          account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          username TEXT NOT NULL UNIQUE,
+          password_hash TEXT NOT NULL,
+          badge TEXT NOT NULL DEFAULT 'LISTENER',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""")
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+          token_hash TEXT PRIMARY KEY,
+          account_id UUID NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+          expires_at TIMESTAMPTZ NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at)")
 
 @app.on_event("startup")
 def startup():
@@ -54,6 +74,55 @@ class LibraryItem(BaseModel):
 class LibrarySync(BaseModel):
     items: list[LibraryItem] = Field(default_factory=list, max_length=1000)
 
+class AccountCredentials(BaseModel):
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
+    password: str = Field(min_length=8, max_length=128)
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 310000)
+    return base64.urlsafe_b64encode(salt).decode().rstrip("=") + "$" + base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        salt_text, digest_text = stored.split("$", 1)
+        salt = base64.urlsafe_b64decode(salt_text + "=" * (-len(salt_text) % 4))
+        expected = base64.urlsafe_b64decode(digest_text + "=" * (-len(digest_text) % 4))
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 310000)
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+def token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+def require_account(authorization: str | None):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="authentication_required")
+    token = authorization[7:].strip()
+    if len(token) < 32:
+        raise HTTPException(status_code=401, detail="invalid_token")
+    try:
+        with connect() as conn:
+            row = conn.execute("""
+              SELECT a.account_id, a.username, a.badge
+              FROM sessions s JOIN accounts a ON a.account_id=s.account_id
+              WHERE s.token_hash=%s AND s.expires_at > NOW()
+            """, (token_digest(token),)).fetchone()
+            if not row:
+                raise HTTPException(status_code=401, detail="session_expired")
+            return row
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="database_unavailable")
+
+def create_session(conn, account_id):
+    token = secrets.token_urlsafe(48)
+    conn.execute("INSERT INTO sessions(token_hash, account_id, expires_at) VALUES (%s,%s,%s)",
+                 (token_digest(token), account_id, datetime.now(timezone.utc) + timedelta(days=30)))
+    return token
+
 @app.get("/health")
 def health():
     if not DATABASE_URL:
@@ -64,6 +133,74 @@ def health():
         return {"status": "ok", "database": "connected", "service": "vynix-api"}
     except Exception:
         raise HTTPException(status_code=503, detail="database_unavailable")
+
+@app.post("/v1/auth/register")
+def register_account(payload: AccountCredentials):
+    username = payload.username.strip().lower()
+    try:
+        with connect() as conn:
+            account_id = conn.execute("""
+              INSERT INTO accounts(username, password_hash) VALUES (%s,%s)
+              RETURNING account_id
+            """, (username, hash_password(payload.password))).fetchone()["account_id"]
+            token = create_session(conn, account_id)
+            account = conn.execute("SELECT account_id, username, badge, created_at FROM accounts WHERE account_id=%s", (account_id,)).fetchone()
+            return {"token": token, "token_type": "Bearer", "expires_in": 2592000, "account": account}
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(status_code=409, detail="username_taken")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="database_unavailable")
+
+@app.post("/v1/auth/login")
+def login_account(payload: AccountCredentials):
+    username = payload.username.strip().lower()
+    try:
+        with connect() as conn:
+            account = conn.execute("SELECT account_id, username, password_hash, badge, created_at FROM accounts WHERE username=%s", (username,)).fetchone()
+            if not account or not verify_password(payload.password, account["password_hash"]):
+                raise HTTPException(status_code=401, detail="invalid_credentials")
+            token = create_session(conn, account["account_id"])
+            account.pop("password_hash", None)
+            return {"token": token, "token_type": "Bearer", "expires_in": 2592000, "account": account}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="database_unavailable")
+
+@app.get("/v1/auth/me")
+def current_account(authorization: str | None = Header(default=None)):
+    account = require_account(authorization)
+    return {"account": account}
+
+@app.post("/v1/auth/logout")
+def logout_account(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="authentication_required")
+    token = authorization[7:].strip()
+    try:
+        with connect() as conn:
+            conn.execute("DELETE FROM sessions WHERE token_hash=%s", (token_digest(token),))
+        return {"ok": True}
+    except Exception:
+        raise HTTPException(status_code=503, detail="database_unavailable")
+
+@app.get("/v1/badges")
+def list_badges():
+    return {"badges": [
+        {"id": "LISTENER", "name": "Слушатель VYNIX", "description": "Стандартный профиль"},
+        {"id": "EARLY", "name": "Ранний пользователь", "description": "Бейдж раннего доступа"},
+        {"id": "CREATOR", "name": "Создатель плейлистов", "description": "Для музыкальных кураторов"},
+        {"id": "TEAM", "name": "Команда VYNIX", "description": "Выдаётся администрацией"}
+    ]}
+
+@app.get("/v1/auth/me/badges")
+def my_badges(authorization: str | None = Header(default=None)):
+    account = require_account(authorization)
+    badge = account["badge"]
+    names = {"LISTENER": "Слушатель VYNIX", "EARLY": "Ранний пользователь", "CREATOR": "Создатель плейлистов", "TEAM": "Команда VYNIX"}
+    return {"badges": [{"id": badge, "name": names.get(badge, "Пользователь VYNIX")} ]}
 
 @app.get("/v1/profile/{user_id}")
 def get_profile(user_id: str):
