@@ -534,49 +534,50 @@ private fun formatPlayerTime(milliseconds: Long): String {
 
 
 private fun searchMusicServices(query: String): List<AudioTrack> {
-    val encoded = URLEncoder.encode(query, "UTF-8")
+    val encoded = URLEncoder.encode(query.trim(), "UTF-8")
     val found = LinkedHashMap<String, AudioTrack>()
-    fun request(url: String, parser: (JSONObject) -> Unit) {
-        var connection: HttpURLConnection? = null
-        try {
-            connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 7000
-                readTimeout = 7000
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", "VYNIX-Android/2.0")
-            }
-            if (connection.responseCode in 200..299) {
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                parser(JSONObject(body))
-            }
-        } catch (_: Exception) {
-        } finally { connection?.disconnect() }
-    }
-    request("https://itunes.apple.com/search?term=$encoded&entity=song&limit=25") { root ->
-        val results = root.optJSONArray("results") ?: JSONArray()
-        for (i in 0 until results.length()) {
-            val item = results.optJSONObject(i) ?: continue
-            val preview = item.optString("previewUrl")
-            if (preview.isBlank() || preview == "null") continue
-            val title = item.optString("trackName", "Без названия")
-            val artist = item.optString("artistName", "Неизвестный исполнитель")
-            val key = "remote:$preview"
-            found[key] = AudioTrack(item.optLong("trackId", key.hashCode().toLong()), Uri.parse(preview), title, artist, item.optString("collectionName", ""), item.optLong("trackTimeMillis", 0L), item.optString("artworkUrl100").takeIf { it.startsWith("http") }?.replace("100x100bb", "600x600bb"), "Apple Music · превью", isPreview = true)
+    var connection: HttpURLConnection? = null
+    try {
+        connection = (URL("https://discoveryprovider.audius.co/v1/tracks/search?query=$encoded&limit=25&app_name=VYNIX").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 9000
+            readTimeout = 12000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "VYNIX-Android/2.0")
+            setRequestProperty("Accept", "application/json")
         }
-    }
-    request("https://api.deezer.com/search?q=$encoded&limit=25") { root ->
-        val results = root.optJSONArray("data") ?: JSONArray()
-        for (i in 0 until results.length()) {
-            val item = results.optJSONObject(i) ?: continue
-            val preview = item.optString("preview")
-            if (preview.isBlank() || preview == "null") continue
-            val title = item.optString("title", "Без названия")
-            val artist = item.optJSONObject("artist")?.optString("name") ?: "Неизвестный исполнитель"
-            val albumObj = item.optJSONObject("album")
-            val key = "remote:$preview"
-            if (!found.containsKey(key)) found[key] = AudioTrack(item.optLong("id", key.hashCode().toLong()), Uri.parse(preview), title, artist, albumObj?.optString("title") ?: "", 30000L, albumObj?.optString("cover_xl")?.takeIf { it.startsWith("http") }, "Deezer · превью", isPreview = true)
+        if (connection.responseCode in 200..299) {
+            val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            val results = root.optJSONArray("data") ?: JSONArray()
+            for (i in 0 until results.length()) {
+                val item = results.optJSONObject(i) ?: continue
+                val id = item.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: continue
+                if (item.optBoolean("is_streamable", true).not()) continue
+                val title = item.optString("title", "Без названия").takeIf { it.isNotBlank() } ?: "Без названия"
+                val user = item.optJSONObject("user")
+                val artist = user?.optString("name")?.takeIf { !it.isNullOrBlank() && it != "null" } ?: "Неизвестный исполнитель"
+                val artwork = item.optJSONObject("artwork")
+                val artworkUrl = artwork?.optString("480x480")?.takeIf { it.startsWith("http") }
+                    ?: artwork?.optString("150x150")?.takeIf { it.startsWith("http") }
+                val album = item.optString("genre", "").takeIf { it != "null" } ?: ""
+                val streamUrl = "https://discoveryprovider.audius.co/v1/tracks/$id/stream?app_name=VYNIX"
+                val durationMs = item.optLong("duration", 0L).coerceAtLeast(0L) * 1000L
+                found[id] = AudioTrack(
+                    id = id.hashCode().toLong(),
+                    uri = Uri.parse(streamUrl),
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    duration = durationMs,
+                    artworkUrl = artworkUrl,
+                    source = "Audius · полный трек",
+                    isPreview = false
+                )
+            }
         }
+    } catch (_: Exception) {
+        // Keep search resilient when the streaming provider is temporarily unavailable.
+    } finally {
+        connection?.disconnect()
     }
-
     return found.values.toList()
 }
