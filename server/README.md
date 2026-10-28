@@ -10,6 +10,7 @@ FastAPI backend for VYNIX accounts, server-issued profile badges, and profile/li
 - `POST /v1/auth/logout` — revoke the current session
 - `GET /v1/auth/me/badges` — badges for the signed-in account
 - `GET /v1/badges` — public badge catalogue
+- `PUT /v1/admin/accounts/{username}/badge` — protected badge assignment using `X-VYNIX-ADMIN-KEY` and JSON `{"badge":"EARLY"}`; configure `VYNIX_ADMIN_KEY` in the hosting environment
 - `GET /v1/profile/{user_id}`
 - `PUT /v1/profile/{user_id}` — JSON `{"display_name":"VYNIX Listener"}`
 - `GET /v1/library/{user_id}`
