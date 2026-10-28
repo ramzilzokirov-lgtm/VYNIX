@@ -96,7 +96,28 @@ internal object NuclearStyleSearch {
     }
 
 
-    fun resolve(track: AudioTrack): String = track.uri.toString()
+    private data class CachedStream(val url: String, val expiresAt: Long)
+    private val streamCache = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
+
+    fun resolve(track: AudioTrack): String {
+        val sourceUrl = track.uri.toString()
+        if (sourceUrl.contains("googlevideo.com/") || sourceUrl.contains("googleusercontent.com/")) {
+            return sourceUrl
+        }
+        val cached = streamCache[sourceUrl]
+        if (cached != null && System.currentTimeMillis() < cached.expiresAt) return cached.url
+        val info = org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(sourceUrl)
+        val stream = info.audioStreams
+            .filter { it.content.isNotBlank() }
+            .maxByOrNull { it.averageBitrate }
+            ?.content
+            ?: error("YouTube не предоставил доступный аудиопоток для этой песни.")
+        val expirySeconds = Regex("[?&]expire=(\\d+)").find(stream)?.groupValues?.get(1)?.toLongOrNull()
+        val expiry = if (expirySeconds != null) expirySeconds * 1000L - 60_000L
+            else System.currentTimeMillis() + 25 * 60_000L
+        streamCache[sourceUrl] = CachedStream(stream, expiry)
+        return stream
+    }
 
     private fun text(url: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
