@@ -26,11 +26,9 @@ class VynixPlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider.Builder(this)
-                .setSmallIcon(R.drawable.ic_vynix_logo)
-                .build()
-        )
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this).build()
+        notificationProvider.setSmallIcon(R.drawable.ic_vynix_logo)
+        setMediaNotificationProvider(notificationProvider)
 
         val openAppIntent = PendingIntent.getActivity(
             this,
