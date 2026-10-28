@@ -104,9 +104,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var tracks by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var permissionGranted by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Главная") }
-    var search by remember { mutableStateOf("")
+    var search by remember { mutableStateOf("") }
     var onlineResults by remember { mutableStateOf(emptyList<AudioTrack>()) }
-    var searchingOnline by remember { mutableStateOf(false) } }
+    var searchingOnline by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(setOf<String>()) }
     var recent by remember { mutableStateOf(listOf<String>()) }
     var playlists by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
