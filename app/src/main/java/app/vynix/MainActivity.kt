@@ -181,7 +181,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     val uri = item.optString("uri").takeIf { it.isNotBlank() }?.let(Uri::parse) ?: continue
                     val track = AudioTrack(item.optLong("id"), uri, item.optString("title"), item.optString("artist"),
                         item.optString("album"), item.optLong("duration"), item.optString("artwork").takeIf { it.isNotBlank() && it != "null" },
-                        item.optString("source", "YouTube Music"), item.optBoolean("preview", false))
+                        item.optString("source", "Free To Use"), item.optBoolean("preview", false))
                     put(track.key, track)
                 }
             }
@@ -438,9 +438,9 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
         try {
             results = withContext(Dispatchers.IO) { searchMultiSourceTracks(q) }
             onResultsChange(results)
-            if (results.isEmpty()) error = "YouTube Music не вернул результаты. Попробуй другой запрос."
+            if (results.isEmpty()) error = "Free To Use не вернул результаты. Попробуй другой запрос."
         } catch (e: Exception) {
-            error = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось выполнить поиск в YouTube Music."
+            error = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось выполнить поиск в Free To Use."
             results = emptyList()
             onResultsChange(emptyList())
         } finally { loading = false }
@@ -449,7 +449,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Поиск в YouTube Music", color = White, fontWeight = FontWeight.SemiBold)
+                Text("Поиск в Free To Use", color = White, fontWeight = FontWeight.SemiBold)
                 Text("Единый музыкальный каталог", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
