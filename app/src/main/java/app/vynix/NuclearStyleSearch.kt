@@ -13,7 +13,7 @@ internal object NuclearStyleSearch {
         val home = text("https://music.youtube.com/")
         val apiKey = Regex("\"INNERTUBE_API_KEY\"\\s*:\\s*\"([^\"]+)\"")
             .find(home)?.groupValues?.getOrNull(1) ?: error("YouTube Music API key unavailable")
-        val clientVersion = Regex("\\\"INNERTUBE_CLIENT_VERSION\\\"\\s*:\\s*\\\"([^\\"]+)\\\"")
+        val clientVersion = Regex("\"INNERTUBE_CLIENT_VERSION\"\\s*:\\s*\"([^\"]+)\"")
             .find(home)?.groupValues?.getOrNull(1) ?: "1.20261020.01.00"
         val endpoint = "https://music.youtube.com/youtubei/v1/search?key=" + URLEncoder.encode(apiKey, "UTF-8")
         val body = JSONObject()
