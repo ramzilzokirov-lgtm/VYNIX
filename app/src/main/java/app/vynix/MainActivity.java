@@ -76,10 +76,10 @@ public class MainActivity extends AppCompatActivity {
         getWindow().getDecorView().setSystemUiVisibility(0);
         player = new ExoPlayer.Builder(this).build();
         player.addListener(new Player.Listener() {
-            @Override public void onIsPlayingChanged(boolean isPlaying) { refreshMini(); }
-            @Override public void onPlaybackStateChanged(int playbackState) { refreshMini(); }
-            @Override public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) { refreshMini(); }
-            @Override public void onMediaItemTransition(MediaItem item, int reason) { refreshMini(); }
+            @Override public void onIsPlayingChanged(boolean isPlaying) { refreshMini(); syncPlaybackButtons(); }
+            @Override public void onPlaybackStateChanged(int playbackState) { refreshMini(); syncPlaybackButtons(); }
+            @Override public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) { refreshMini(); syncPlaybackButtons(); }
+            @Override public void onMediaItemTransition(MediaItem item, int reason) { refreshMini(); syncPlaybackButtons(); }
         });
         audioPicker = registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
             if (uris == null) return;
@@ -495,7 +495,7 @@ public class MainActivity extends AppCompatActivity {
     private GradientDrawable round(int color,int radius,int stroke,int width){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));if(width>0)d.setStroke(dp(width),stroke);return d;}
     private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
     private void chooseAudio(){audioPicker.launch(new String[]{"audio/*"});}
-    private void playTrack(int index){if(index<0||index>=tracks.size())return;currentIndex=index;player.setMediaItem(MediaItem.fromUri(tracks.get(index).uri));player.prepare();player.play();refreshMini();showPlayer();}
+    private void playTrack(int index){if(index<0||index>=tracks.size())return;currentIndex=index;player.setMediaItem(MediaItem.fromUri(tracks.get(index).uri));player.prepare();player.play();refreshMini();if(content!=null){content.postDelayed(()->{if(player!=null&&player.isPlaying())refreshMini();},180);content.postDelayed(()->{if(player!=null&&player.isPlaying())refreshMini();},650);}}
     private void playAdjacentTrack(int direction) {
         if(tracks.isEmpty())return;
         int base=currentIndex<0?0:currentIndex;
@@ -530,6 +530,30 @@ public class MainActivity extends AppCompatActivity {
         playButton.setText(playing?"Ⅱ":"▶");
         playButton.animate().cancel();playButton.setScaleX(.88f);playButton.setScaleY(.88f);
         playButton.animate().scaleX(1f).scaleY(1f).setDuration(170).setInterpolator(new android.view.animation.OvershootInterpolator(1.4f)).start();
+    }
+    private void syncPlaybackButtons(){
+        boolean playing=player!=null&&player.isPlaying();
+        if(playButton!=null){
+            String icon=playing?"Ⅱ":"▶";
+            if(!icon.contentEquals(playButton.getText())){playButton.setText(icon);playButton.animate().cancel();playButton.setScaleX(.78f);playButton.setScaleY(.78f);playButton.animate().scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(new android.view.animation.OvershootInterpolator(1.5f)).start();}
+        }
+        if(content!=null){
+            updatePlayLabels(content,playing);
+        }
+    }
+    private void updatePlayLabels(ViewGroup group,boolean playing){
+        for(int i=0;i<group.getChildCount();i++){
+            View child=group.getChildAt(i);
+            if(child instanceof TextView){
+                TextView tv=(TextView)child;
+                CharSequence value=tv.getText();
+                if(value!=null&&("▶".contentEquals(value)||"Ⅱ".contentEquals(value))){
+                    tv.setText(playing?"Ⅱ":"▶");
+                    tv.animate().cancel();tv.setScaleX(.86f);tv.setScaleY(.86f);
+                    tv.animate().scaleX(1f).scaleY(1f).setDuration(190).setInterpolator(new android.view.animation.OvershootInterpolator(1.3f)).start();
+                }
+            }else if(child instanceof ViewGroup){updatePlayLabels((ViewGroup)child,playing);}
+        }
     }
     private String formatTime(long millis){if(millis<0||millis==androidx.media3.common.C.TIME_UNSET)return "0:00";long seconds=millis/1000;return (seconds/60)+":"+String.format(java.util.Locale.ROOT,"%02d",seconds%60);}
 
