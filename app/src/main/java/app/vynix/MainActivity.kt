@@ -215,6 +215,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var currentArtist by remember { mutableStateOf("Твоя музыка начинается здесь") }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
+    var fullPlayerOpen by remember { mutableStateOf(false) }
     DisposableEffect(currentPlayer) {
         val c = currentPlayer
         val listener = object : androidx.media3.common.Player.Listener {
@@ -252,6 +253,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
             Column(Modifier.background(backgroundColor)) {
                 if (currentPlayer?.currentMediaItem != null) {
                     MiniPlayer(currentTitle, currentArtist, isPlaying, position, duration,
+                        onOpen = { fullPlayerOpen = true },
                         onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer?.play() },
                         onNext = { currentPlayer?.seekToNextMediaItem() },
                         onSeek = { currentPlayer?.seekTo(it) })
@@ -475,10 +477,10 @@ private fun TrackRow(track: AudioTrack, favorite: Boolean, onClick: () -> Unit, 
 }
 
 @Composable
-private fun MiniPlayer(title: String, artist: String, playing: Boolean, position: Long, duration: Long, onToggle: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
+private fun MiniPlayer(title: String, artist: String, playing: Boolean, position: Long, duration: Long, onOpen: () -> Unit, onToggle: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
     var dragging by remember { mutableFloatStateOf(-1f) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp).clip(RoundedCornerShape(20.dp)).background(SurfaceB).animateContentSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 12.dp, end = 6.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543)))), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.GraphicEq, null, tint = White) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(artist, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -487,6 +489,58 @@ private fun MiniPlayer(title: String, artist: String, playing: Boolean, position
         }
         Slider(value = if (dragging >= 0f) dragging else if (duration > 0L) position.toFloat() / duration else 0f, onValueChange = { dragging = it }, onValueChangeFinished = { if (duration > 0) onSeek((dragging * duration).toLong()); dragging = -1f }, modifier = Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 8.dp), colors = SliderDefaults.colors(thumbColor = Lilac, activeTrackColor = Lilac, inactiveTrackColor = Muted.copy(alpha = .25f)))
     }
+}
+
+    if (fullPlayerOpen && currentPlayer?.currentMediaItem != null) {
+        FullPlayer(
+            title = currentTitle, artist = currentArtist, playing = isPlaying, position = position, duration = duration,
+            onClose = { fullPlayerOpen = false },
+            onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer.play() },
+            onPrevious = { currentPlayer.seekToPreviousMediaItem() },
+            onNext = { currentPlayer.seekToNextMediaItem() },
+            onSeek = { currentPlayer.seekTo(it) }
+        )
+    }
+
+
+@Composable
+private fun FullPlayer(title: String, artist: String, playing: Boolean, position: Long, duration: Long, onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
+    var dragging by remember { mutableFloatStateOf(-1f) }
+    androidx.activity.compose.BackHandler(onBack = onClose)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF49305F), Color(0xFF100E17)))).padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Свернуть плеер", tint = White, modifier = Modifier.size(32.dp)) }
+                Text("СЕЙЧАС ИГРАЕТ", Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.labelMedium)
+                Icon(Icons.Rounded.GraphicEq, "VYNIX", tint = Lilac)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D6BC4), Color(0xFF352543), Color(0xFF17121F)))), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Album, null, tint = White.copy(alpha = .9f), modifier = Modifier.fillMaxSize(.42f)) }
+                Spacer(Modifier.height(30.dp))
+                Text(title, color = White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(6.dp))
+                Text(artist, color = Muted, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Column(Modifier.fillMaxWidth()) {
+                Slider(value = if (dragging >= 0f) dragging else if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f, onValueChange = { dragging = it }, onValueChangeFinished = { if (duration > 0) onSeek((dragging * duration).toLong()); dragging = -1f }, colors = SliderDefaults.colors(thumbColor = Lilac, activeTrackColor = Lilac, inactiveTrackColor = Muted.copy(alpha = .35f)))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(formatPlayerTime(if (dragging >= 0f) (dragging * duration).toLong() else position), color = Muted, style = MaterialTheme.typography.labelSmall)
+                    Text(formatPlayerTime(duration), color = Muted, style = MaterialTheme.typography.labelSmall)
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "Предыдущий трек", tint = White, modifier = Modifier.size(34.dp)) }
+                    IconButton(onClick = onToggle, modifier = Modifier.size(76.dp).clip(CircleShape).background(Lilac)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Пауза" else "Воспроизвести", tint = Ink, modifier = Modifier.size(46.dp)) }
+                    IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, "Следующий трек", tint = White, modifier = Modifier.size(34.dp)) }
+                }
+            }
+        }
+    }
+}
+
+private fun formatPlayerTime(milliseconds: Long): String {
+    val totalSeconds = milliseconds.coerceAtLeast(0L) / 1000L
+    return "%d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
 }
 
 
