@@ -111,7 +111,6 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var search by remember { mutableStateOf("") }
     var onlineResults by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var searchingOnline by remember { mutableStateOf(false) }
-    var selectedYoutubeTrack by remember { mutableStateOf<YoutubeTrack?>(null) }
     var favorites by remember { mutableStateOf(setOf<String>()) }
     var recent by remember { mutableStateOf(listOf<String>()) }
     var playlists by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
@@ -265,9 +264,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                             )
                         )
                         Spacer(Modifier.height(10.dp))
-                        YoutubeMusicSearch(
+                        OpenAudioSearch(
                             query = search,
-                            onPlayTrack = { selectedYoutubeTrack = it }
+                            onPlayTrack = { track -> onPlay(listOf(track), 0) }
                         )
                     }
                     tab == "Избранное" -> TrackList(filtered, favorites, onPlay, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Избранное")
@@ -278,56 +277,6 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                 }
             }
         }
-    }
-
-    selectedYoutubeTrack?.let { youtubeTrack ->
-        AlertDialog(
-            onDismissRequest = { selectedYoutubeTrack = null },
-            containerColor = SurfaceA,
-            title = {
-                Text("Трек в VYNIX", color = White, fontWeight = FontWeight.Bold)
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    AsyncImage(
-                        model = youtubeTrack.artworkUrl,
-                        contentDescription = "Обложка ${youtubeTrack.title}",
-                        modifier = Modifier.size(176.dp).clip(RoundedCornerShape(22.dp))
-                    )
-                    Text(
-                        youtubeTrack.title,
-                        color = White,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(youtubeTrack.artist, color = Muted)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                            .background(SurfaceB).padding(12.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Icon(Icons.Rounded.Info, contentDescription = null, tint = Lilac)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Каталог и обложка загружены в VYNIX. Этот источник не предоставляет приложению прямой аудиопоток, поэтому воспроизведение не запускается.",
-                            color = Muted,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { selectedYoutubeTrack = null }) {
-                    Text("Назад", color = Lilac)
-                }
-            }
-        )
     }
 
     if (showAppearance) {
@@ -416,16 +365,14 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 }
 
 
-private data class YoutubeTrack(
-    val videoId: String,
-    val title: String,
-    val artist: String,
-    val artworkUrl: String?
+private data class OpenAudioResult(
+    val track: AudioTrack,
+    val identifier: String
 )
 
 @Composable
-private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Unit) {
-    var results by remember { mutableStateOf<List<YoutubeTrack>>(emptyList()) }
+private fun OpenAudioSearch(query: String, onPlayTrack: (AudioTrack) -> Unit) {
+    var results by remember { mutableStateOf<List<AudioTrack>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var retryCounter by remember { mutableIntStateOf(0) }
@@ -442,13 +389,14 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
         loading = true
         error = null
         try {
-            val found = withContext(Dispatchers.IO) { searchYoutubeMusic(normalized) }
+            val found = withContext(Dispatchers.IO) { searchOpenAudio(normalized) }
             results = found
-            if (found.isEmpty()) error = "Ничего не найдено. Попробуй название песни или исполнителя."
+            if (found.isEmpty()) error = "В открытом каталоге не нашлось доступных полных аудиозаписей. Попробуй другое название."
         } catch (e: Exception) {
             error = when {
-                e.message?.contains("timeout", true) == true -> "Музыкальный каталог не ответил вовремя. Попробуй ещё раз."
-                else -> "Не удалось загрузить каталог. Проверь интернет и попробуй снова."
+                e.message?.contains("timeout", true) == true || e.message?.contains("timed out", true) == true ->
+                    "Каталог отвечает слишком долго. Проверь соединение и повтори поиск."
+                else -> "Не удалось загрузить открытый музыкальный каталог. Попробуй ещё раз."
             }
             results = emptyList()
         } finally {
@@ -465,7 +413,7 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Музыкальный поиск", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Песни, исполнители и обложки", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Полные аудиофайлы · без ключа и веб-плеера", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
@@ -474,8 +422,8 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(10.dp))
-                    Text("Найди любимую музыку", color = White, fontWeight = FontWeight.SemiBold)
-                    Text("Введи хотя бы два символа", color = Muted)
+                    Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
+                    Text("Введи название песни или исполнителя", color = Muted)
                 }
             }
             results.isNotEmpty() -> LazyColumn(
@@ -483,7 +431,7 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(results, key = { it.videoId }) { track ->
+                items(results, key = { it.key }) { track ->
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                             .background(SurfaceA).clickable { onPlayTrack(track) }.padding(10.dp),
@@ -499,7 +447,7 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
                             Text(track.title, color = White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(4.dp))
                             Text(track.artist, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("YouTube Music", color = Lilac, style = MaterialTheme.typography.labelSmall)
+                            Text("Открытый аудиокаталог · полная запись", color = Lilac, style = MaterialTheme.typography.labelSmall)
                         }
                         Icon(Icons.Rounded.PlayCircle, contentDescription = "Слушать", tint = Lilac, modifier = Modifier.size(32.dp))
                     }
@@ -520,83 +468,88 @@ private fun YoutubeMusicSearch(query: String, onPlayTrack: (YoutubeTrack) -> Uni
     }
 }
 
-private fun searchYoutubeMusic(query: String): List<YoutubeTrack> {
-    val homepage = URL("https://music.youtube.com/").openConnection() as HttpURLConnection
-    homepage.connectTimeout = 12000
-    homepage.readTimeout = 12000
-    homepage.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36")
-    val homeText = try { homepage.inputStream.bufferedReader().use { it.readText() } } finally { homepage.disconnect() }
-    val apiKey = Regex("""INNERTUBE_API_KEY"\s*:\s*"([^"]+)""")
-        .find(homeText)?.groupValues?.getOrNull(1)
-        ?: throw IllegalStateException("Music catalog configuration unavailable")
-
-    val endpoint = URL("https://music.youtube.com/youtubei/v1/search?key=$apiKey")
-    val conn = endpoint.openConnection() as HttpURLConnection
-    conn.requestMethod = "POST"
-    conn.connectTimeout = 15000
-    conn.readTimeout = 20000
-    conn.doOutput = true
-    conn.setRequestProperty("Content-Type", "application/json")
-    conn.setRequestProperty("Origin", "https://music.youtube.com")
-    conn.setRequestProperty("Referer", "https://music.youtube.com/")
-    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36")
-    val payload = JSONObject().put(
-        "context",
-        JSONObject().put(
-            "client",
-            JSONObject().put("clientName", "WEB_REMIX")
-                .put("clientVersion", "1.20261027.01.00")
-                .put("hl", "ru").put("gl", "DE")
-        )
-    ).put("query", query)
-    val response = try {
-        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-        val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
-        stream.bufferedReader().use { it.readText() }.also {
-            if (conn.responseCode !in 200..299) throw IllegalStateException("Music catalog returned HTTP ${conn.responseCode}")
-        }
-    } finally { conn.disconnect() }
-
-    val root = JSONObject(response)
-    val output = mutableListOf<YoutubeTrack>()
-    val seen = HashSet<String>()
-    fun walk(value: Any?) {
-        when (value) {
-            is JSONObject -> {
-                val renderer = value.optJSONObject("musicResponsiveListItemRenderer")
-                if (renderer != null) {
-                    val videoId = renderer.optJSONObject("playlistItemData")?.optString("videoId")
-                        ?.takeIf { it.isNotBlank() && it != "null" }
-                        ?: renderer.optJSONObject("overlay")?.optJSONObject("musicItemThumbnailOverlayRenderer")
-                            ?.optJSONObject("content")?.optJSONObject("musicPlayButtonRenderer")
-                            ?.optJSONObject("playNavigationEndpoint")?.optJSONObject("watchEndpoint")?.optString("videoId")
-                    val columns = renderer.optJSONArray("flexColumns")
-                    fun columnText(index: Int): String {
-                        val col = columns?.optJSONObject(index)
-                            ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
-                            ?.optJSONObject("text") ?: return ""
-                        val runs = col.optJSONArray("runs") ?: return col.optString("simpleText")
-                        return (0 until runs.length()).mapNotNull { runs.optJSONObject(it)?.optString("text") }
-                            .filter { it.isNotBlank() }.joinToString("")
-                    }
-                    val title = columnText(0)
-                    val artist = columnText(1).ifBlank { "YouTube Music" }
-                    val thumbs = renderer.optJSONObject("thumbnail")?.optJSONObject("musicThumbnailRenderer")
-                        ?.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
-                    val artwork = thumbs?.let { arr -> if (arr.length() > 0) arr.optJSONObject(arr.length() - 1)?.optString("url") else null }
-                        ?.takeIf { it.isNotBlank() && it != "null" }
-                    if (!videoId.isNullOrBlank() && videoId != "null" && title.isNotBlank() && seen.add(videoId)) {
-                        output.add(YoutubeTrack(videoId, title, artist, artwork))
-                    }
-                }
-                val keys = value.keys()
-                while (keys.hasNext()) walk(value.opt(keys.next()))
-            }
-            is JSONArray -> for (i in 0 until value.length()) walk(value.opt(i))
+private fun searchOpenAudio(query: String): List<AudioTrack> {
+    fun getText(url: String, timeoutMs: Int = 12000): String {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.connectTimeout = timeoutMs
+        connection.readTimeout = timeoutMs
+        connection.setRequestProperty("User-Agent", "VYNIX/0.1 (Android music player)")
+        return try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw IllegalStateException("Catalog HTTP $code")
+            body
+        } finally {
+            connection.disconnect()
         }
     }
-    walk(root)
-    return output.take(50)
+
+    val safeQuery = query.replace("\\", " ").replace("\"", " ").trim()
+    val searchExpression = "mediatype:audio AND (title:\"$safeQuery\" OR creator:\"$safeQuery\")"
+    val searchUrl = "https://archive.org/advancedsearch.php?q=${URLEncoder.encode(searchExpression, "UTF-8")}" +
+        "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&rows=18&page=1&output=json"
+    val docs = JSONObject(getText(searchUrl)).optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+    val output = mutableListOf<AudioTrack>()
+    val seen = HashSet<String>()
+
+    for (i in 0 until minOf(docs.length(), 18)) {
+        val doc = docs.optJSONObject(i) ?: continue
+        val identifier = doc.optString("identifier").takeIf { it.isNotBlank() && it != "null" } ?: continue
+        if (!seen.add(identifier)) continue
+        val title = doc.optString("title").takeIf { it.isNotBlank() && it != "null" } ?: continue
+        val creatorValue = doc.opt("creator")
+        val artist = when (creatorValue) {
+            is JSONArray -> (0 until creatorValue.length()).mapNotNull { creatorValue.optString(it).takeIf(String::isNotBlank) }.joinToString(", ")
+            is String -> creatorValue
+            else -> ""
+        }.ifBlank { "Неизвестный исполнитель" }
+
+        try {
+            val metadata = JSONObject(getText("https://archive.org/metadata/${URLEncoder.encode(identifier, "UTF-8")}", 10000))
+            val files = metadata.optJSONArray("files") ?: continue
+            var chosen: JSONObject? = null
+            for (j in 0 until files.length()) {
+                val file = files.optJSONObject(j) ?: continue
+                val name = file.optString("name")
+                val format = file.optString("format").lowercase()
+                val lower = name.lowercase()
+                val isAudio = lower.endsWith(".mp3") || lower.endsWith(".m4a") ||
+                    lower.endsWith(".ogg") || lower.endsWith(".oga") || lower.endsWith(".flac") ||
+                    lower.endsWith(".wav") || format.contains("mpeg") || format.contains("ogg vorbis") ||
+                    format.contains("flac") || format.contains("wave")
+                if (isAudio && !lower.endsWith(".xml") && !lower.endsWith(".torrent") &&
+                    !lower.contains("sample") && !lower.contains("preview")) {
+                    chosen = file
+                    if (lower.endsWith(".mp3")) break
+                }
+            }
+            val file = chosen ?: continue
+            val fileName = file.optString("name")
+            if (fileName.isBlank()) continue
+            val encodedPath = fileName.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+            val audioUrl = "https://archive.org/download/${URLEncoder.encode(identifier, "UTF-8")}/$encodedPath"
+            val durationSeconds = file.optString("length").toDoubleOrNull()?.toLong() ?: 0L
+            val artwork = "https://archive.org/services/img/${URLEncoder.encode(identifier, "UTF-8")}"
+            output.add(
+                AudioTrack(
+                    id = identifier.hashCode().toLong(),
+                    uri = Uri.parse(audioUrl),
+                    title = title,
+                    artist = artist,
+                    album = "Internet Archive",
+                    duration = durationSeconds * 1000L,
+                    artworkUrl = artwork,
+                    source = "Internet Archive",
+                    isPreview = false
+                )
+            )
+        } catch (_: Exception) {
+            // Skip items whose metadata has no playable audio file; keep the rest of the search usable.
+        }
+        if (output.size >= 12) break
+    }
+    return output
 }
 
 private fun Int.spCompat() = this.sp
