@@ -56,8 +56,8 @@ if main_activity.exists():
 online = app / "src/main/java/io/github/rootscripts/riff/Online.java"
 content = online.read_text(encoding="utf-8")
 content = content.replace('"ytsearch15:"', '"ytsearch5:"').replace('"scsearch15:"', '"scsearch5:"')
-content = content.replace('.addOption("--retries", 1)', '.addOption("--retries", 0)')
-content = content.replace('.addOption("--extractor-retries", 1)', '.addOption("--extractor-retries", 0)')
+content = content.replace('.addOption("--retries", 1)', '.addOption("--retries", 2)')
+content = content.replace('.addOption("--extractor-retries", 1)', '.addOption("--extractor-retries", 2)')
 content = content.replace(
     "if (cached != null && System.currentTimeMillis() - cached.time < 20 * 60 * 1000) return cached;",
     "// Signed media URLs expire quickly; avoid reusing stale URLs on replay.\n"
@@ -74,8 +74,9 @@ old_http_factory = '''                new DefaultHttpDataSource.Factory()
                     .setConnectTimeoutMs(20000)
                     .setReadTimeoutMs(30000);'''
 new_http_factory = '''                new DefaultHttpDataSource.Factory()
+                    .setAllowCrossProtocolRedirects(true)
                     .setConnectTimeoutMs(20000)
-                    .setReadTimeoutMs(30000);'''
+                    .setReadTimeoutMs(45000);'''
 if old_http_factory not in content:
     raise SystemExit("Expected HTTP factory block was not found; refusing to build without the playback-header fix.")
 content = content.replace(old_http_factory, new_http_factory, 1)
