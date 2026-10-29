@@ -354,178 +354,65 @@ def sync_library(user_id: str, payload: LibrarySync):
         raise HTTPException(status_code=503, detail="database_unavailable")
 
 
-# Music discovery uses Audius' public API. It does not scrape paid services or
-# claim that catalog metadata from Spotify/Apple is a playable full track.
-AUDIUS_APP_NAME = os.environ.get("AUDIUS_APP_NAME", "VYNIX")
-AUDIUS_API_BASE = "https://api.audius.co/v1"
-
+# Spotify is the sole online music catalog and playback destination.
+@app.get("/v1/spotify/search-tracks")
 @app.get("/v1/music/search")
-async def music_search(q: str, limit: int = 20):
-    query = q.strip()
-    if len(query) < 2:
-        raise HTTPException(status_code=400, detail="query_too_short")
-    limit = max(1, min(limit, 30))
-
-    def normalize(value: str) -> str:
-        import re
-        return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
-
-    normalized_query = normalize(query)
-    query_tokens = [token for token in normalized_query.split() if len(token) > 1]
-    results = []
-    errors = []
-
-    # Deezer is a broad metadata catalogue. Its preview URL is not represented
-    # as a full-track stream; playback remains subject to the source's rights.
+def spotify_search_tracks(q: str = Query(min_length=2, max_length=180), limit: int = Query(default=20, ge=1, le=30)):
+    token = get_spotify_access_token()
+    params = {"q": q.strip(), "type": "track", "limit": min(limit, 30)}
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            response = await client.get(
-                "https://api.deezer.com/search/track",
-                params={"q": query, "limit": min(100, limit * 3)},
-                headers={"Accept": "application/json", "User-Agent": "VYNIX/0.1"},
+        response = httpx.get(
+            "https://api.spotify.com/v1/search",
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10.0,
+        )
+        if response.status_code == 401:
+            global _spotify_token, _spotify_token_expires_at
+            _spotify_token, _spotify_token_expires_at = "", 0.0
+            token = get_spotify_access_token()
+            response = httpx.get(
+                "https://api.spotify.com/v1/search",
+                params=params,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10.0,
             )
-            response.raise_for_status()
-            payload = response.json()
-        for track in payload.get("data", []):
-            track_id = str(track.get("id", "")).strip()
-            title = str(track.get("title", "")).strip()
-            if not track_id or not title:
-                continue
-            artist_obj = track.get("artist") or {}
-            album_obj = track.get("album") or {}
-            artist = str(artist_obj.get("name") or "Unknown artist").strip()
-            title_norm = normalize(title)
-            artist_norm = normalize(artist)
-            combined = f"{title_norm} {artist_norm}".strip()
-            matched = [token for token in query_tokens if token in combined.split()]
-            if query_tokens and not matched:
-                continue
-            score = 0
-            if normalized_query and normalized_query in artist_norm:
-                score += 100
-            if normalized_query and normalized_query in title_norm:
-                score += 90
-            if query_tokens and all(token in artist_norm.split() for token in query_tokens):
-                score += 80
-            if query_tokens and all(token in title_norm.split() for token in query_tokens):
-                score += 70
-            score += 10 * len(matched)
-            preview = str(track.get("preview") or "").strip()
-            results.append((score, {
-                "id": f"deezer:{track_id}",
-                "provider_id": track_id,
-                "title": title,
-                "artist": artist,
-                "album": str(album_obj.get("title") or ""),
-                "artwork": (album_obj.get("cover_medium") or album_obj.get("cover") or None),
-                "duration_seconds": track.get("duration"),
-                "source": "Deezer",
-                "preview_url": preview or None,
-                "permalink": track.get("link"),
-                "is_preview": True,
-                "playback_note": "Deezer API provides a short preview here, not a guaranteed full track.",
-            }))
-    except (httpx.HTTPError, ValueError) as exc:
-        errors.append("deezer_unavailable")
-
-    # Audius remains the full-track stream provider when a track is available there.
-    try:
-        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
-            response = await client.get(
-                f"{AUDIUS_API_BASE}/tracks/search",
-                params={"query": query, "limit": min(100, limit * 3), "app_name": AUDIUS_APP_NAME},
-            )
-            response.raise_for_status()
-            payload = response.json()
-        for track in payload.get("data", []):
-            track_id = str(track.get("id", "")).strip()
-            title = str(track.get("title", "")).strip()
-            if not track_id or not title:
-                continue
-            user = track.get("user") or {}
-            artist = str(user.get("name") or "Unknown artist").strip()
-            title_norm = normalize(title)
-            artist_norm = normalize(artist)
-            combined = f"{title_norm} {artist_norm}".strip()
-            matched = [token for token in query_tokens if token in combined.split()]
-            if query_tokens and not matched:
-                continue
-            score = 0
-            if normalized_query and normalized_query in artist_norm:
-                score += 100
-            if normalized_query and normalized_query in title_norm:
-                score += 90
-            if query_tokens and all(token in artist_norm.split() for token in query_tokens):
-                score += 80
-            if query_tokens and all(token in title_norm.split() for token in query_tokens):
-                score += 70
-            score += 10 * len(matched)
-            results.append((score, {
-                "id": track_id,
-                "provider_id": track_id,
-                "title": title,
-                "artist": artist,
-                "album": "",
-                "artwork": (track.get("artwork") or {}).get("150x150"),
-                "duration_seconds": track.get("duration"),
-                "source": "Audius",
-                "preview_url": None,
-                "permalink": track.get("permalink"),
-                "stream_url": f"/v1/music/stream/{track_id}",
-                "is_preview": False,
-            }))
-    except (httpx.HTTPError, ValueError):
-        errors.append("audius_unavailable")
-
-    # Deduplicate by normalized title and artist; prefer Audius for playback
-    # when the same recording exists on both providers.
-    deduped = {}
-    for score, item in results:
-        key = (normalize(item["title"]), normalize(item["artist"]))
-        previous = deduped.get(key)
-        playback_bonus = 5 if item["source"] == "Audius" else 0
-        if previous is None or score + playback_bonus > previous[0] + (5 if previous[1]["source"] == "Audius" else 0):
-            deduped[key] = (score, item)
-    ranked = sorted(deduped.values(), key=lambda pair: (pair[0], pair[1]["source"] == "Audius"), reverse=True)
-    return {
-        "query": query,
-        "source": "Deezer+Audius",
-        "count": len(ranked[:limit]),
-        "providers": ["Deezer", "Audius"],
-        "provider_errors": errors,
-        "tracks": [item for _, item in ranked[:limit]],
-    }
-
-@app.get("/v1/music/resolve/{track_id}")
-async def music_resolve(track_id: str):
-    if not track_id or len(track_id) > 120 or not track_id.replace("-", "").replace("_", "").isalnum():
-        raise HTTPException(status_code=400, detail="invalid_track_id")
-    try:
-        async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
-            response = await client.get(
-                f"{AUDIUS_API_BASE}/tracks/{track_id}/stream",
-                params={"app_name": AUDIUS_APP_NAME},
-            )
-        if response.status_code in (301, 302, 303, 307, 308) and response.headers.get("location"):
-            return {"track_id": track_id, "source": "Audius", "stream_url": response.headers["location"]}
-        if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="track_stream_not_found")
+        if response.status_code == 403:
+            raise HTTPException(status_code=503, detail="spotify_web_api_access_denied")
         response.raise_for_status()
-        return {"track_id": track_id, "source": "Audius", "stream_url": str(response.url)}
+        payload = response.json()
+        tracks = []
+        for item in payload.get("tracks", {}).get("items", []):
+            track_id = str(item.get("id") or "")
+            title = str(item.get("name") or "").strip()
+            if not track_id or not title:
+                continue
+            album = item.get("album") or {}
+            artists = item.get("artists") or []
+            tracks.append({
+                "id": track_id,
+                "spotify_uri": item.get("uri") or f"spotify:track:{track_id}",
+                "title": title,
+                "artist": ", ".join(str(artist.get("name") or "") for artist in artists),
+                "album": str(album.get("name") or ""),
+                "duration_ms": int(item.get("duration_ms") or 0),
+                "artwork": (album.get("images") or [{}])[0].get("url", ""),
+                "source": "Spotify",
+                "is_preview": False,
+            })
+        return {
+            "query": q.strip(),
+            "source": "Spotify",
+            "providers": ["Spotify"],
+            "count": len(tracks),
+            "tracks": tracks,
+        }
     except HTTPException:
         raise
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="music_provider_timeout")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="music_provider_unavailable")
-
-@app.get("/v1/music/stream/{track_id}")
-async def music_stream(track_id: str):
-    resolved = await music_resolve(track_id)
-    # Redirect clients to the provider's official stream endpoint; do not store
-    # copyrighted audio on VYNIX servers or proxy third-party content.
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=resolved["stream_url"], status_code=307)
+        raise HTTPException(status_code=504, detail="spotify_search_timeout")
+    except Exception:
+        raise HTTPException(status_code=502, detail="spotify_search_unavailable")
 
 
 # Lyrics are fetched from LRCLIB's public API. VYNIX stores no lyric files;
