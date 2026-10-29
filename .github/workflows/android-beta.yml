@@ -21,6 +21,19 @@ jobs:
       - name: Checkout VYNIX source
         uses: actions/checkout@v4
 
+      - name: Cache stable Android debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: vynix-spotify-debug-keystore-v1
+
+      - name: Download official Spotify App Remote SDK
+        run: |
+          mkdir -p app/libs
+          curl --fail --location --retry 3 --retry-delay 2 \
+            https://raw.githubusercontent.com/spotify/android-sdk/master/app-remote-lib/spotify-app-remote-release-0.8.0.aar \
+            --output app/libs/spotify-app-remote-release-0.8.0.aar
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -42,6 +55,11 @@ jobs:
         env:
           APPLE_MUSIC_DEVELOPER_TOKEN: ${{ secrets.APPLE_MUSIC_DEVELOPER_TOKEN }}
         run: gradle --no-daemon :app:assembleDebug
+
+      - name: Print Spotify Android application fingerprint
+        run: |
+          keytool -list -v -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android -keypass android | grep -E 'SHA1:|SHA256:'
+          echo "Spotify Dashboard package name: app.vynix"
 
       - name: Run Android lint and unit tests
         env:
