@@ -267,6 +267,45 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                         }
                     }
                 }
+                val activeTrack = mediaItem?.localConfiguration?.tag as? AudioTrack
+                if (activeTrack != null && !activeTrack.streamUrl.isNullOrBlank() && c != null) {
+                    val nextIndex = c.currentMediaItemIndex + 1
+                    if (nextIndex in 0 until c.mediaItemCount) {
+                        val nextItem = c.getMediaItemAt(nextIndex)
+                        val nextTrack = nextItem.localConfiguration?.tag as? AudioTrack
+                        val nextId = nextItem.mediaId
+                        if (nextTrack != null && nextTrack.streamUrl.isNullOrBlank() &&
+                            !nextId.isNullOrBlank() && nextId !in resolvingTrackKeys) {
+                            resolvingTrackKeys = resolvingTrackKeys + nextId
+                            playbackScope.launch {
+                                try {
+                                    val resolvedNext = withContext(Dispatchers.IO) { NuclearStyleSearch.resolveTrack(nextTrack) }
+                                    val stream = resolvedNext.streamUrl ?: error("Источник не вернул аудиопоток.")
+                                    val controller = currentPlayer
+                                    if (controller != null) {
+                                        val indexNow = (0 until controller.mediaItemCount)
+                                            .firstOrNull { controller.getMediaItemAt(it).mediaId == nextId } ?: -1
+                                        if (indexNow >= 0) {
+                                            val currentNext = controller.getMediaItemAt(indexNow)
+                                            val tag = currentNext.localConfiguration?.tag as? AudioTrack
+                                            if (tag?.streamUrl.isNullOrBlank()) {
+                                                val replacement = MediaItem.Builder().setUri(stream).setMediaId(nextId)
+                                                    .setMediaMetadata(MediaMetadata.Builder().setTitle(resolvedNext.title).setArtist(resolvedNext.artist)
+                                                        .setAlbumTitle(resolvedNext.album).setArtworkUri(resolvedNext.artworkUrl?.let(Uri::parse)).build())
+                                                    .setTag(resolvedNext).build()
+                                                controller.replaceMediaItem(indexNow, replacement)
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    // Keep the current song playing; the next item will retry when selected.
+                                } finally {
+                                    resolvingTrackKeys = resolvingTrackKeys - nextId
+                                }
+                            }
+                        }
+                    }
+                }
                 currentTitle = mediaItem?.mediaMetadata?.title?.toString() ?: "Выбери трек"
                 currentArtist = mediaItem?.mediaMetadata?.artist?.toString() ?: "Твоя музыка начинается здесь"
                 currentArtwork = mediaItem?.mediaMetadata?.artworkUri?.toString()
