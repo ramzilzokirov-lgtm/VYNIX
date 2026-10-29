@@ -581,7 +581,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
         when {
-            query.trim().length < 2 && !loading && error == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            query.trim().length < 2 && results.isEmpty() && !loading && error == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp)); Spacer(Modifier.height(10.dp))
                     Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
