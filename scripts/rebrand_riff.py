@@ -192,7 +192,7 @@ retry_methods = """  private static int httpStatusCode(Throwable error) {
 
   private boolean retryFreshStream(PlaybackException failure) {
     if (controller == null
-        || failure.getErrorCode() != PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) return false;
+        || failure.errorCode != PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) return false;
     MediaItem failedItem = controller.getCurrentMediaItem();
     if (failedItem == null || failedItem.localConfiguration == null) return false;
     Uri uri = failedItem.localConfiguration.uri;
