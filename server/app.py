@@ -296,7 +296,7 @@ async def music_search(q: str, limit: int = 20):
         async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
             response = await client.get(
                 f"{AUDIUS_API_BASE}/tracks/search",
-                params={"query": query, "limit": limit, "app_name": AUDIUS_APP_NAME},
+                params={"query": query, "limit": min(100, limit * 3), "app_name": AUDIUS_APP_NAME},
             )
             response.raise_for_status()
             payload = response.json()
@@ -304,23 +304,53 @@ async def music_search(q: str, limit: int = 20):
         raise HTTPException(status_code=504, detail="music_provider_timeout")
     except (httpx.HTTPError, ValueError):
         raise HTTPException(status_code=502, detail="music_provider_unavailable")
-    results = []
+
+    def normalize(value: str) -> str:
+        import re
+        return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+
+    normalized_query = normalize(query)
+    query_tokens = [token for token in normalized_query.split() if len(token) > 1]
+    scored = []
+    seen = set()
     for track in payload.get("data", []):
         track_id = str(track.get("id", "")).strip()
         title = str(track.get("title", "")).strip()
-        if not track_id or not title:
+        if not track_id or not title or track_id in seen:
             continue
         user = track.get("user") or {}
-        results.append({
+        artist = str(user.get("name") or "Unknown artist").strip()
+        title_norm = normalize(title)
+        artist_norm = normalize(artist)
+        combined = f"{title_norm} {artist_norm}".strip()
+        # Drop broad provider matches that do not contain any meaningful query term.
+        # A short second token such as the "G" in "Alex G" is not treated as a keyword.
+        matched = [token for token in query_tokens if token in combined.split()]
+        if query_tokens and not matched:
+            continue
+        score = 0
+        if normalized_query and normalized_query in artist_norm:
+            score += 100
+        if normalized_query and normalized_query in title_norm:
+            score += 90
+        if query_tokens and all(token in artist_norm.split() for token in query_tokens):
+            score += 80
+        if query_tokens and all(token in title_norm.split() for token in query_tokens):
+            score += 70
+        score += 10 * len(matched)
+        seen.add(track_id)
+        scored.append((score, {
             "id": track_id,
             "title": title,
-            "artist": str(user.get("name") or "Unknown artist"),
+            "artist": artist,
             "artwork": (track.get("artwork") or {}).get("150x150"),
             "duration_seconds": track.get("duration"),
             "source": "Audius",
             "stream_url": f"/v1/music/stream/{track_id}",
             "permalink": track.get("permalink"),
-        })
+        }))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    results = [item[1] for item in scored[:limit]]
     return {"query": query, "source": "Audius", "count": len(results), "tracks": results}
 
 @app.get("/v1/music/resolve/{track_id}")
