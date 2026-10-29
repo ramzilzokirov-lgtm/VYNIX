@@ -196,13 +196,43 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         playbackScope.launch {
             playbackError = null
             try {
-                val resolved = withContext(Dispatchers.IO) {
-                    queue.map { track ->
-                        val stream = NuclearStyleSearch.resolve(track)
-                        track.copy(uri = Uri.parse(stream), isPreview = false)
+                val result = withContext(Dispatchers.IO) {
+                    val playable = mutableListOf<Pair<Int, AudioTrack>>()
+                    var selectedError: Exception? = null
+                    queue.forEachIndexed { originalIndex, track ->
+                        try {
+                            // Providers can return expired or transiently invalid stream URLs.
+                            // Resolve each item independently so one broken queue entry cannot
+                            // prevent the currently selected track from starting.
+                            var lastError: Exception? = null
+                            var stream: String? = null
+                            repeat(2) { attempt ->
+                                if (stream == null) {
+                                    try {
+                                        stream = NuclearStyleSearch.resolve(track)
+                                    } catch (e: Exception) {
+                                        lastError = e
+                                        if (attempt == 0) Thread.sleep(350)
+                                    }
+                                }
+                            }
+                            val resolvedStream = stream?.takeIf { it.isNotBlank() }
+                                ?: throw (lastError ?: IllegalStateException("источник не вернул ссылку на аудио"))
+                            playable += originalIndex to track.copy(uri = Uri.parse(resolvedStream), isPreview = false)
+                        } catch (e: Exception) {
+                            if (originalIndex == index) selectedError = e
+                        }
                     }
+                    if (selectedError != null) throw IllegalStateException(
+                        "Не удалось получить поток для выбранного трека: " +
+                            (selectedError?.message ?: "источник временно недоступен"),
+                        selectedError
+                    )
+                    val selectedPosition = playable.indexOfFirst { it.first == index }
+                    if (selectedPosition < 0) throw IllegalStateException("Выбранный трек недоступен")
+                    playable.map { it.second } to selectedPosition
                 }
-                onPlay(resolved, index.coerceIn(0, (resolved.size - 1).coerceAtLeast(0)))
+                onPlay(result.first, result.second)
             } catch (e: Exception) {
                 val detail = (e.message ?: e.cause?.message ?: "неизвестная ошибка").take(180)
                 playbackError = "Не удалось открыть аудио: $detail"
