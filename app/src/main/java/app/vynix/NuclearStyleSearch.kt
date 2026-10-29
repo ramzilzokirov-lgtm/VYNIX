@@ -267,7 +267,6 @@ internal object NuclearStyleSearch {
         val candidates = buildList {
             addAll(runCatching { searchExtractor(ServiceList.YouTube, query) }.getOrDefault(emptyList()))
             addAll(runCatching { searchExtractor(ServiceList.SoundCloud, query) }.getOrDefault(emptyList()))
-            addAll(runCatching { search(query) }.getOrDefault(emptyList()))
         }
         val wantedTitle = normalizeForMatch(track.title)
         val wantedArtist = normalizeForMatch(track.artist)
