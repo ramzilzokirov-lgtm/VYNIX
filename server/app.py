@@ -465,6 +465,92 @@ def spotify_search_tracks(q: str = Query(min_length=2, max_length=180), limit: i
         raise HTTPException(status_code=502, detail="spotify_search_unavailable")
 
 
+@app.get("/v1/spotify/playlist-tracks")
+def spotify_playlist_tracks(playlist_id: str = Query(min_length=10, max_length=64)):
+    """Return public Spotify playlist metadata only; never expose audio URLs or previews."""
+    import re
+    safe_id = playlist_id.strip()
+    if not re.fullmatch(r"[A-Za-z0-9]+", safe_id):
+        raise HTTPException(status_code=400, detail="invalid_spotify_playlist_id")
+    token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        meta = httpx.get(
+            f"https://api.spotify.com/v1/playlists/{safe_id}",
+            params={"fields": "name,tracks.total"},
+            headers=headers,
+            timeout=12.0,
+        )
+        if meta.status_code == 401:
+            global _spotify_token, _spotify_token_expires_at
+            _spotify_token, _spotify_token_expires_at = "", 0.0
+            token = get_spotify_access_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            meta = httpx.get(
+                f"https://api.spotify.com/v1/playlists/{safe_id}",
+                params={"fields": "name,tracks.total"},
+                headers=headers,
+                timeout=12.0,
+            )
+        if meta.status_code == 403:
+            raise HTTPException(status_code=503, detail="spotify_playlist_access_denied")
+        meta.raise_for_status()
+        metadata = meta.json()
+        name = str(metadata.get("name") or "Spotify playlist")
+        total = int((metadata.get("tracks") or {}).get("total") or 0)
+        tracks = []
+        offset = 0
+        while offset < min(total, 500):
+            response = httpx.get(
+                f"https://api.spotify.com/v1/playlists/{safe_id}/tracks",
+                params={"limit": 100, "offset": offset, "fields": "items(track(id,name,artists(name),album(name,images),duration_ms,uri)),next,total"},
+                headers=headers,
+                timeout=12.0,
+            )
+            if response.status_code == 403:
+                raise HTTPException(status_code=503, detail="spotify_playlist_access_denied")
+            response.raise_for_status()
+            payload = response.json()
+            items = payload.get("items") or []
+            if not items:
+                break
+            for entry in items:
+                item = entry.get("track") or {}
+                track_id = str(item.get("id") or "")
+                title = str(item.get("name") or "").strip()
+                if not track_id or not title:
+                    continue
+                album = item.get("album") or {}
+                artists = item.get("artists") or []
+                tracks.append({
+                    "id": track_id,
+                    "spotify_uri": item.get("uri") or f"spotify:track:{track_id}",
+                    "title": title,
+                    "artist": ", ".join(str(artist.get("name") or "") for artist in artists),
+                    "album": str(album.get("name") or ""),
+                    "duration_ms": int(item.get("duration_ms") or 0),
+                    "artwork": (album.get("images") or [{}])[0].get("url", ""),
+                    "source": "Spotify",
+                    "is_preview": False,
+                })
+            offset += len(items)
+            if not payload.get("next"):
+                break
+        return {"name": name, "tracks": tracks, "count": len(tracks), "source": "Spotify"}
+    except HTTPException:
+        raise
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="spotify_playlist_timeout")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="spotify_playlist_not_found")
+        if exc.response.status_code == 429:
+            raise HTTPException(status_code=503, detail="spotify_rate_limited")
+        raise HTTPException(status_code=502, detail="spotify_playlist_upstream_error")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="spotify_playlist_unavailable")
+
+
 # Public no-login playback catalog. Spotify provides discovery metadata only;
 # Audius supplies playable tracks through its public API.
 AUDIUS_API_BASE = "https://api.audius.co/v1"
