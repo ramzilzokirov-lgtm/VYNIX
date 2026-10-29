@@ -481,8 +481,8 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Поиск в музыкальных каталогах", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Полные треки · Free To Use и Internet Archive", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Поиск музыки VYNIX", color = White, fontWeight = FontWeight.SemiBold)
+                Text("Полные треки · каталог Audius", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
