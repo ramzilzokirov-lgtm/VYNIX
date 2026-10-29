@@ -69,7 +69,7 @@ private val BackgroundPalettes = listOf(
     Triple("Чёрный", 0xFF484452, 0xFF08080B)
 )
 
-data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве", val isPreview: Boolean = false) {
+data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val duration: Long, val artworkUrl: String? = null, val source: String = "На устройстве", val isPreview: Boolean = false, val streamUrl: String? = null) {
     val key: String get() = when {
         else -> uri.toString()
     }
@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
     private fun playQueue(tracks: List<AudioTrack>, index: Int) {
         val c = controller ?: return
         c.setMediaItems(tracks.map { t ->
-            MediaItem.Builder().setUri(t.uri).setMediaId(t.key).setMediaMetadata(
+            MediaItem.Builder().setUri(t.streamUrl?.let(Uri::parse) ?: t.uri).setMediaId(t.key).setMediaMetadata(
                 MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).setAlbumTitle(t.album)
                     .setArtworkUri(t.artworkUrl?.let(Uri::parse)).build()
             ).setTag(t).build()
@@ -195,47 +195,25 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 
     val currentPlayer = player()
     val playbackScope = rememberCoroutineScope()
+    var resolvingTrackKeys by remember { mutableStateOf(setOf<String>()) }
     fun playFromLibrary(queue: List<AudioTrack>, index: Int) {
+        val selected = queue.getOrNull(index) ?: return
         playbackScope.launch {
             playbackError = null
             try {
-                val result = withContext(Dispatchers.IO) {
-                    val playable = mutableListOf<Pair<Int, AudioTrack>>()
-                    var selectedError: Exception? = null
-                    queue.forEachIndexed { originalIndex, track ->
-                        try {
-                            // Providers can return expired or transiently invalid stream URLs.
-                            // Resolve each item independently so one broken queue entry cannot
-                            // prevent the currently selected track from starting.
-                            var lastError: Exception? = null
-                            var stream: String? = null
-                            repeat(2) { attempt ->
-                                if (stream == null) {
-                                    try {
-                                        stream = NuclearStyleSearch.resolve(track)
-                                    } catch (e: Exception) {
-                                        lastError = e
-                                        if (attempt == 0) Thread.sleep(350)
-                                    }
-                                }
-                            }
-                            val resolvedStream = stream?.takeIf { it.isNotBlank() }
-                                ?: throw (lastError ?: IllegalStateException("источник не вернул ссылку на аудио"))
-                            playable += originalIndex to track.copy(uri = Uri.parse(resolvedStream), isPreview = false)
-                        } catch (e: Exception) {
-                            if (originalIndex == index) selectedError = e
-                        }
+                // Resolve only the selected track; later queue items are resolved on demand.
+                var lastError: Exception? = null
+                var stream: String? = null
+                repeat(2) { attempt ->
+                    if (stream == null) {
+                        try { stream = withContext(Dispatchers.IO) { NuclearStyleSearch.resolve(selected) } }
+                        catch (e: Exception) { lastError = e; if (attempt == 0) kotlinx.coroutines.delay(350) }
                     }
-                    if (selectedError != null) throw IllegalStateException(
-                        "Не удалось получить поток для выбранного трека: " +
-                            (selectedError?.message ?: "источник временно недоступен"),
-                        selectedError
-                    )
-                    val selectedPosition = playable.indexOfFirst { it.first == index }
-                    if (selectedPosition < 0) throw IllegalStateException("Выбранный трек недоступен")
-                    playable.map { it.second } to selectedPosition
                 }
-                onPlay(result.first, result.second)
+                val resolvedStream = stream?.takeIf { it.isNotBlank() }
+                    ?: throw (lastError ?: IllegalStateException("Источник не вернул аудиопоток."))
+                val queued = queue.toMutableList().apply { this[index] = selected.copy(streamUrl = resolvedStream, isPreview = false) }
+                onPlay(queued, index)
             } catch (e: Exception) {
                 val detail = (e.message ?: e.cause?.message ?: "неизвестная ошибка").take(180)
                 playbackError = "Не удалось открыть аудио: $detail"
@@ -259,6 +237,33 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onIsPlayingChanged(value: Boolean) { isPlaying = value }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val unresolvedTrack = mediaItem?.localConfiguration?.tag as? AudioTrack
+                val unresolvedId = mediaItem?.mediaId
+                if (unresolvedTrack != null && unresolvedTrack.streamUrl.isNullOrBlank() && !unresolvedId.isNullOrBlank() && unresolvedId !in resolvingTrackKeys) {
+                    resolvingTrackKeys = resolvingTrackKeys + unresolvedId
+                    playbackScope.launch {
+                        try {
+                            val stream = withContext(Dispatchers.IO) { NuclearStyleSearch.resolve(unresolvedTrack) }
+                            val controller = currentPlayer
+                            val activeIndex = controller?.currentMediaItemIndex ?: -1
+                            if (controller != null && activeIndex >= 0 && controller.currentMediaItem?.mediaId == unresolvedId) {
+                                val resolvedTrack = unresolvedTrack.copy(streamUrl = stream, isPreview = false)
+                                val replacement = MediaItem.Builder().setUri(stream).setMediaId(unresolvedId)
+                                    .setMediaMetadata(MediaMetadata.Builder().setTitle(resolvedTrack.title).setArtist(resolvedTrack.artist)
+                                        .setAlbumTitle(resolvedTrack.album).setArtworkUri(resolvedTrack.artworkUrl?.let(Uri::parse)).build())
+                                    .setTag(resolvedTrack).build()
+                                controller.replaceMediaItem(activeIndex, replacement)
+                                controller.prepare()
+                                controller.play()
+                            }
+                        } catch (e: Exception) {
+                            playbackError = "Не удалось открыть следующий трек: ${(e.message ?: "источник недоступен").take(150)}"
+                            currentPlayer?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() }
+                        } finally {
+                            resolvingTrackKeys = resolvingTrackKeys - unresolvedId
+                        }
+                    }
+                }
                 currentTitle = mediaItem?.mediaMetadata?.title?.toString() ?: "Выбери трек"
                 currentArtist = mediaItem?.mediaMetadata?.artist?.toString() ?: "Твоя музыка начинается здесь"
                 currentArtwork = mediaItem?.mediaMetadata?.artworkUri?.toString()
