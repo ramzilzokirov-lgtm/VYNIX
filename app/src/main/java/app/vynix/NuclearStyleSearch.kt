@@ -11,7 +11,7 @@ import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request as ExtractorRequest
 import org.schabi.newpipe.extractor.downloader.Response as ExtractorResponse
 import org.schabi.newpipe.extractor.search.SearchInfo
-import org.schabi.newpipe.extractor.services.ServiceList
+import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.HttpURLConnection
