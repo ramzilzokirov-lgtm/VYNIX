@@ -69,6 +69,17 @@ internal object NuclearStyleSearch {
         }
     }
 
+    fun trending(): List<AudioTrack> {
+        // Show a ready-made popular chart when the search field is empty.
+        // Audius exposes playable tracks through its public trending endpoint.
+        val json = request(
+            "$AUDIUS_API_BASE/tracks/trending?time=week&limit=30&app_name=$AUDIUS_APP_NAME"
+        )
+        return parseTracks(json)
+            .distinctBy { "${it.title.lowercase()}|${it.artist.lowercase()}" }
+            .take(30)
+    }
+
     fun resolve(track: AudioTrack): String {
         val trackId = track.uri.lastPathSegment?.takeIf { it.isNotBlank() }
             ?: error("Не удалось определить ID трека. Повтори поиск.")
