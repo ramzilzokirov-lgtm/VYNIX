@@ -7,7 +7,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/** VYNIX music catalogue client. Search and stream resolution are handled by the VYNIX API. */
+/** Unified VYNIX search client for the server's Audius + Deezer catalogue. */
 internal object NuclearStyleSearch {
     private const val API_BASE = "https://vynix-api.onrender.com"
 
@@ -19,28 +19,40 @@ internal object NuclearStyleSearch {
         val data = root.optJSONArray("tracks") ?: JSONArray()
         return (0 until data.length()).mapNotNull { index ->
             val item = data.optJSONObject(index) ?: return@mapNotNull null
-            val trackId = item.optString("id").trim()
+            val id = item.optString("id").trim()
             val title = item.optString("title").trim()
-            if (trackId.isBlank() || title.isBlank()) return@mapNotNull null
+            if (id.isBlank() || title.isBlank()) return@mapNotNull null
+            val source = item.optString("source", "Audius")
             val artist = item.optString("artist").trim().ifBlank { "Неизвестный исполнитель" }
             val artwork = item.optString("artwork").takeIf { it.startsWith("https://") || it.startsWith("http://") }
             val durationSeconds = item.optDouble("duration_seconds", 0.0).takeIf { it.isFinite() } ?: 0.0
-            val streamUri = Uri.parse("$API_BASE/v1/music/stream/${Uri.encode(trackId)}")
+            val previewUrl = item.optString("preview_url").takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            val uri = if (source == "Deezer") {
+                Uri.parse(previewUrl ?: item.optString("permalink"))
+            } else {
+                Uri.parse("$API_BASE/v1/music/stream/${Uri.encode(id)}")
+            }
+            if (source == "Deezer" && previewUrl == null) return@mapNotNull null
             AudioTrack(
-                id = (trackId.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
-                uri = streamUri,
+                id = (id.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
+                uri = uri,
                 title = title,
                 artist = artist,
-                album = "Audius",
+                album = item.optString("album").ifBlank { source },
                 duration = (durationSeconds * 1000).toLong(),
                 artworkUrl = artwork,
-                source = "Audius",
-                isPreview = false
+                source = source,
+                isPreview = source == "Deezer" || item.optBoolean("is_preview", false)
             )
-        }.distinctBy { it.uri.toString() }.take(30)
+        }.distinctBy { "${it.title.lowercase()}|${it.artist.lowercase()}" }.take(30)
     }
 
     fun resolve(track: AudioTrack): String {
+        if (track.source == "Deezer") {
+            val url = track.uri.toString()
+            if (track.isPreview && (url.startsWith("https://") || url.startsWith("http://"))) return url
+            error("Для этой песни Deezer не предоставил ссылку на превью.")
+        }
         if (track.source == "Audius") {
             val trackId = track.uri.lastPathSegment?.takeIf { it.isNotBlank() }
                 ?: error("Не удалось определить ID трека. Повтори поиск.")
@@ -50,7 +62,7 @@ internal object NuclearStyleSearch {
             if (streamUrl.startsWith("https://") || streamUrl.startsWith("http://")) return streamUrl
             error("Сервис не вернул ссылку на аудио. Попробуй другой трек.")
         }
-        error("Источник этого трека больше не поддерживается. Выполни поиск заново.")
+        error("Источник этого трека не поддерживается. Выполни поиск заново.")
     }
 
     private fun request(url: String): String {
