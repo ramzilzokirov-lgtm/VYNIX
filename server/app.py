@@ -494,19 +494,35 @@ def audius_request(path: str, params: dict | None = None):
 @app.get("/v1/music/search")
 def music_search(q: str = Query(min_length=2, max_length=180), limit: int = Query(default=20, ge=1, le=30)):
     query = q.strip()
-    payload = audius_request("/tracks/search", {"query": query, "limit": min(limit, 30)})
-    raw_tracks = payload.get("data") or []
+    safe_limit = min(limit, 30)
+    # Audius supports popularity sorting. Merge popular and relevance-ranked
+    # searches so well-known matches aren't buried by low-play-count uploads.
+    result_sets = []
+    for sort_method in ("popular", "relevant"):
+        try:
+            payload = audius_request("/tracks/search", {
+                "query": query,
+                "limit": safe_limit,
+                "sort_method": sort_method,
+            })
+            result_sets.extend(payload.get("data") or [])
+        except HTTPException:
+            if not result_sets:
+                raise
+
     tracks = []
-    for item in raw_tracks:
+    seen_ids = set()
+    for item in result_sets:
         if not isinstance(item, dict):
             continue
         track_id = str(item.get("id") or "").strip()
         title = str(item.get("title") or "").strip()
-        if not track_id or not title:
+        if not track_id or not title or track_id in seen_ids:
             continue
+        seen_ids.add(track_id)
         user = item.get("user") or {}
         artwork = item.get("artwork") or {}
-        artwork_url = next((str(artwork.get(size)) for size in ("150x150", "480x480", "1000x1000") if artwork.get(size)), "")
+        artwork_url = next((str(artwork.get(size)) for size in ("480x480", "1000x1000", "150x150") if artwork.get(size)), "")
         try:
             duration_seconds = max(0, int(float(item.get("duration") or 0)))
         except (ValueError, TypeError):
@@ -519,6 +535,8 @@ def music_search(q: str = Query(min_length=2, max_length=180), limit: int = Quer
             "artwork": artwork_url, "source": "Audius", "is_preview": False,
             "permalink": str(item.get("permalink") or ""),
         })
+        if len(tracks) >= safe_limit:
+            break
     return {"query": query, "source": "Audius", "providers": ["Audius"], "count": len(tracks), "tracks": tracks}
 
 @app.get("/v1/music/resolve/{track_id}")
