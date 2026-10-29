@@ -122,6 +122,9 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var recent by remember { mutableStateOf(listOf<String>()) }
     var playlists by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var createPlaylist by remember { mutableStateOf(false) }
+    var showImportPlaylist by remember { mutableStateOf(false) }
+    var importPlaylistUrl by remember { mutableStateOf("") }
+    var importingPlaylist by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
     var addTarget by remember { mutableStateOf<AudioTrack?>(null) }
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
@@ -337,7 +340,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                 when {
                     tab == "Главная" -> HomeScreen(favorites.size, recent.size, onOpen = { tab = it }, onPlay = { tab = "Поиск" })
                     tab == "Профиль" -> AccountScreen()
-                    tab == "Медиатека" && selectedPlaylist == null -> PlaylistLibraryScreen(playlists, onCreate = { createPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it; tab = "Плейлисты" })
+                    tab == "Медиатека" && selectedPlaylist == null -> PlaylistLibraryScreen(playlists, onCreate = { createPlaylist = true }, onImport = { showImportPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it; tab = "Плейлисты" })
                     tab == "Поиск" -> {
                         OutlinedTextField(
                             value = search,
@@ -374,7 +377,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     tab == "Избранное" -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Избранное")
                     tab == "Недавние" -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Недавно слушали")
                     tab == "Плейлисты" && selectedPlaylist != null -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = selectedPlaylist ?: "Плейлист", onBack = { selectedPlaylist = null; tab = "Медиатека" })
-                    tab == "Плейлисты" -> PlaylistLibraryScreen(playlists, onCreate = { createPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it })
+                    tab == "Плейлисты" -> PlaylistLibraryScreen(playlists, onCreate = { createPlaylist = true }, onImport = { showImportPlaylist = true }, onOpenPlaylist = { selectedPlaylist = it })
                     else -> HomeScreen(favorites.size, recent.size, onOpen = { tab = it }, onPlay = { tab = "Поиск" })
                 }
             }
@@ -446,6 +449,50 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     }
 
     if (createPlaylist) AlertDialog(onDismissRequest = { createPlaylist = false }, containerColor = SurfaceA, title = { Text("Новый плейлист") }, text = { OutlinedTextField(value = playlistName, onValueChange = { playlistName = it }, placeholder = { Text("Название") }, singleLine = true) }, confirmButton = { TextButton(onClick = { val name = playlistName.trim(); if (name.isNotEmpty()) { playlists = playlists + (name to (playlists[name] ?: emptyList())); saveState(); selectedPlaylist = name; tab = "Плейлисты" }; playlistName = ""; createPlaylist = false }) { Text("Создать") } }, dismissButton = { TextButton(onClick = { createPlaylist = false }) { Text("Отмена") } })
+    if (showImportPlaylist) AlertDialog(
+        onDismissRequest = { if (!importingPlaylist) showImportPlaylist = false },
+        containerColor = SurfaceA,
+        title = { Text("Импорт плейлиста") },
+        text = {
+            Column {
+                Text("Вставь публичную ссылку Spotify, YouTube или SoundCloud.", color = Muted)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(value = importPlaylistUrl, onValueChange = { importPlaylistUrl = it }, placeholder = { Text("https://…") }, singleLine = true, enabled = !importingPlaylist)
+                if (importingPlaylist) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Lilac)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Загружаю список треков…", color = Muted)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !importingPlaylist && importPlaylistUrl.isNotBlank(), onClick = {
+                importingPlaylist = true
+                playbackError = null
+                playbackScope.launch {
+                    try {
+                        val imported = withContext(Dispatchers.IO) { NuclearStyleSearch.importPlaylist(importPlaylistUrl) }
+                        val uniqueName = if (imported.name !in playlists) imported.name else "${imported.name} (импорт)"
+                        knownTracks = knownTracks + imported.tracks.associateBy { it.key }
+                        playlists = playlists + (uniqueName to imported.tracks.map { it.key })
+                        saveState()
+                        selectedPlaylist = uniqueName
+                        tab = "Плейлисты"
+                        importPlaylistUrl = ""
+                        showImportPlaylist = false
+                    } catch (e: Exception) {
+                        playbackError = "Импорт не выполнен: ${(e.message ?: "источник недоступен").take(150)}"
+                    } finally {
+                        importingPlaylist = false
+                    }
+                }
+            }) { Text("Импортировать", color = Lilac) }
+        },
+        dismissButton = { TextButton(enabled = !importingPlaylist, onClick = { showImportPlaylist = false }) { Text("Отмена") } }
+    )
     addTarget?.let { track ->
         AlertDialog(onDismissRequest = { addTarget = null }, containerColor = SurfaceA, title = { Text("Добавить в плейлист") }, text = {
             if (playlists.isEmpty()) Text("Сначала создай плейлист в медиатеке.")
@@ -690,10 +737,11 @@ private fun FeatureRow(title: String, subtitle: String, icon: androidx.compose.u
 }
 
 @Composable
-private fun PlaylistLibraryScreen(playlists: Map<String, List<String>>, onCreate: () -> Unit, onOpenPlaylist: (String) -> Unit) {
+private fun PlaylistLibraryScreen(playlists: Map<String, List<String>>, onCreate: () -> Unit, onImport: () -> Unit, onOpenPlaylist: (String) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 6.dp, end = 18.dp, bottom = 20.dp)) {
         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text("Плейлисты", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("Только онлайн-музыка", color = Muted) }
+            IconButton(onClick = onImport) { Icon(Icons.Rounded.Link, "Импортировать плейлист", tint = Lilac) }
             Button(onClick = onCreate, colors = ButtonDefaults.buttonColors(containerColor = Lilac, contentColor = Ink)) { Icon(Icons.Rounded.Add, null); Text(" Создать") }
         } }
         item { Spacer(Modifier.height(18.dp)) }
