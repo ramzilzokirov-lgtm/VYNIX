@@ -552,15 +552,21 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(query, retry) {
         val q = query.trim()
-        if (q.length < 2) { results = emptyList(); onResultsChange(emptyList()); error = null; loading = false; return@LaunchedEffect }
-        kotlinx.coroutines.delay(350)
-        loading = true; error = null
+        loading = true
+        error = null
+        if (q.length >= 2) kotlinx.coroutines.delay(350)
         try {
-            results = withContext(Dispatchers.IO) { searchMultiSourceTracks(q) }
+            results = withContext(Dispatchers.IO) {
+                if (q.length < 2) NuclearStyleSearch.trending() else searchMultiSourceTracks(q)
+            }
             onResultsChange(results)
-            if (results.isEmpty()) error = "Ничего не найдено в доступных каталогах. Попробуй другое название."
+            if (results.isEmpty()) {
+                error = if (q.length < 2) "Не удалось загрузить популярные треки. Проверь интернет и повтори попытку."
+                    else "Ничего не найдено в доступных каталогах. Попробуй другое название."
+            }
         } catch (e: Exception) {
-            error = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось подключиться к музыкальным каталогам. Проверь интернет и повтори поиск."
+            error = e.message?.takeIf { it.isNotBlank() }
+                ?: "Не удалось подключиться к музыкальным каталогам. Проверь интернет и повтори поиск."
             results = emptyList()
             onResultsChange(emptyList())
         } finally { loading = false }
@@ -569,13 +575,13 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Поиск музыки VYNIX", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Онлайн-каталог · встроенный плеер VYNIX", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(if (query.trim().length < 2) "Популярная музыка" else "Поиск музыки VYNIX", color = White, fontWeight = FontWeight.SemiBold)
+                Text(if (query.trim().length < 2) "Популярные треки за неделю · плеер VYNIX" else "Онлайн-каталог · встроенный плеер VYNIX", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
         when {
-            query.trim().length < 2 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            query.trim().length < 2 && !loading && error == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp)); Spacer(Modifier.height(10.dp))
                     Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
