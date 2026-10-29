@@ -79,38 +79,15 @@ data class AudioTrack(val id: Long, val uri: Uri, val title: String, val artist:
 class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller by mutableStateOf<MediaController?>(null)
-    private lateinit var spotifyRemote: SpotifyRemoteController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        spotifyRemote = SpotifyRemoteController(this)
         val token = SessionToken(this, android.content.ComponentName(this, VynixPlaybackService::class.java))
         controllerFuture = MediaController.Builder(this, token).buildAsync()
         controllerFuture?.addListener({
             try { controller = controllerFuture?.get() } catch (_: Exception) { }
         }, ContextCompat.getMainExecutor(this))
-        setContent { VynixApp(onPlay = { tracks, index -> playQueue(tracks, index) }, onPlaySpotify = { track -> playSpotify(track) }, player = { controller }) }
-    }
-
-    private fun playSpotify(track: AudioTrack) {
-        lifecycleScope.launch {
-            try {
-                val spotifyUri = withContext(Dispatchers.IO) {
-                    SpotifyCatalog.findTrackUri("${track.title} ${track.artist}")
-                }
-                spotifyRemote.play(spotifyUri) { message ->
-                    runOnUiThread {
-                        android.widget.Toast.makeText(this@MainActivity, message, android.widget.Toast.LENGTH_LONG).show()
-                    }
-                }
-            } catch (error: Exception) {
-                android.widget.Toast.makeText(
-                    this@MainActivity,
-                    error.message ?: "Не удалось найти трек в Spotify.",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
-            }
-        }
+        setContent { VynixApp(onPlay = { tracks, index -> playQueue(tracks, index) }, player = { controller }) }
     }
 
     private fun playQueue(tracks: List<AudioTrack>, index: Int) {
@@ -128,13 +105,12 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controller = null
-        if (::spotifyRemote.isInitialized) spotifyRemote.disconnect()
         super.onDestroy()
     }
 }
 
 @Composable
-private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, onPlaySpotify: (AudioTrack) -> Unit, player: () -> MediaController?) {
+private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> MediaController?) {
     var tracks by remember { mutableStateOf(emptyList<AudioTrack>()) }
     var tab by remember { mutableStateOf("Главная") }
     var search by remember { mutableStateOf("") }
@@ -376,7 +352,6 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, onPlaySpotify: (Au
                         Spacer(Modifier.height(10.dp))
                         OpenAudioSearch(
                             query = search,
-                            onPlaySpotify = onPlaySpotify,
                             onResultsChange = { found ->
                                 onlineResults = found
                                 knownTracks = knownTracks + found.associateBy { it.key }
@@ -567,7 +542,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, onPlaySpotify: (Au
 
 
 @Composable
-private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -> Unit, onPlaySpotify: (AudioTrack) -> Unit, onPlayTrack: (AudioTrack) -> Unit) {
+private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -> Unit, onPlayTrack: (AudioTrack) -> Unit) {
     var results by remember { mutableStateOf<List<AudioTrack>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -595,7 +570,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Поиск музыки VYNIX", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Spotify · поиск и воспроизведение", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Онлайн-каталог · встроенный плеер VYNIX", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
@@ -604,15 +579,16 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp)); Spacer(Modifier.height(10.dp))
                     Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
-                    Text("Ищи треки в каталоге Spotify", color = Muted)
-                    Text("Воспроизведение запускается через приложение Spotify", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("Ищи музыку в онлайн-каталоге", color = Muted)
+                    Text("Музыка играет прямо в VYNIX — другие приложения не нужны", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
             results.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(results, key = { it.key }) { track ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable {
                         error = null
-                        onPlaySpotify(track)
+                        playingId = track.id
+                        onPlayTrack(track)
                     }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(model = track.artworkUrl, contentDescription = "Обложка " + track.title, modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp)))
                         Spacer(Modifier.width(12.dp))
@@ -623,11 +599,11 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
                             Text(track.source, color = Lilac, style = MaterialTheme.typography.labelSmall)
                             if (track.duration > 0L) Text(formatPlayerTime(track.duration), color = Muted, style = MaterialTheme.typography.labelSmall)
                         }
-                        IconButton(onClick = { onPlaySpotify(track) }) {
-                            Icon(Icons.Rounded.Headphones, "Полная версия в Spotify", tint = Lilac, modifier = Modifier.size(24.dp))
+                        IconButton(onClick = { playingId = track.id; onPlayTrack(track) }) {
+                            Icon(Icons.Rounded.Headphones, "Слушать в VYNIX", tint = Lilac, modifier = Modifier.size(24.dp))
                         }
                         if (playingId == track.id) CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Lilac)
-                        else Icon(Icons.Rounded.PlayCircle, "Воспроизвести в Spotify", tint = Muted, modifier = Modifier.size(28.dp))
+                        else Icon(Icons.Rounded.PlayCircle, "Воспроизвести в VYNIX", tint = Muted, modifier = Modifier.size(28.dp))
                     }
                 }
             }
@@ -645,7 +621,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
 }
 
 private fun searchMultiSourceTracks(query: String): List<AudioTrack> =
-    SpotifyCatalog.searchTracks(query)
+    NuclearStyleSearch.search(query)
 
 private fun Int.spCompat() = this.sp
 
