@@ -12,6 +12,52 @@ import java.net.URLEncoder
 internal object SpotifyCatalog {
     private const val API_BASE = "https://vynix-api.onrender.com"
 
+
+    fun searchTracks(query: String): List<AudioTrack> {
+        val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+        val connection = (URL("$API_BASE/v1/spotify/search-tracks?q=$encoded").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 8000
+            readTimeout = 12000
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/json")
+        }
+        return try {
+            val code = connection.responseCode
+            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val detail = runCatching { JSONObject(body).optString("detail") }.getOrNull().orEmpty()
+                when (code) {
+                    503 -> error("Spotify-поиск не настроен или Spotify API недоступен. Проверь SPOTIFY_CLIENT_SECRET и доступ приложения.")
+                    502, 504 -> error("Spotify временно не отвечает. Повтори попытку.")
+                    else -> error(detail.ifBlank { "Spotify-поиск вернул HTTP $code." })
+                }
+            }
+            val array = JSONObject(body).optJSONArray("tracks") ?: org.json.JSONArray()
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val id = item.optString("id")
+                    val title = item.optString("title")
+                    if (id.isBlank() || title.isBlank()) continue
+                    add(AudioTrack(
+                        id = id.hashCode().toLong(),
+                        uri = android.net.Uri.parse("spotify:track:$id"),
+                        title = title,
+                        artist = item.optString("artist"),
+                        album = item.optString("album"),
+                        duration = item.optLong("duration_ms"),
+                        artworkUrl = item.optString("artwork").takeIf { it.startsWith("https://") },
+                        source = "Spotify",
+                        isPreview = false
+                    ))
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun findTrackUri(query: String): String {
         val encoded = URLEncoder.encode(query.trim(), "UTF-8")
         val connection = (URL("$API_BASE/v1/spotify/search?q=$encoded").openConnection() as HttpURLConnection).apply {
