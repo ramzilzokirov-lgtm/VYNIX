@@ -88,10 +88,14 @@ internal object NuclearStyleSearch {
         val audius = runCatching { searchAudius(normalized) }.getOrDefault(emptyList())
         val playable = youtube + soundCloud + audius
         val playableKeys = playable.map { matchKey(it.title, it.artist) }.toSet()
-        val spotifySupplement = runCatching { searchSpotify(normalized) }.getOrDefault(emptyList())
+        val catalogSupplement = (
+            runCatching { searchSpotify(normalized) }.getOrDefault(emptyList()) +
+            runCatching { searchDeezer(normalized) }.getOrDefault(emptyList())
+        )
             .filter { matchKey(it.title, it.artist) !in playableKeys }
+            .distinctBy { matchKey(it.title, it.artist) }
 
-        val merged = (playable + spotifySupplement)
+        val merged = (playable + catalogSupplement)
             .distinctBy { it.uri.toString().lowercase() }
             .take(45)
         if (merged.isEmpty()) {
@@ -119,6 +123,32 @@ internal object NuclearStyleSearch {
                 duration = item.optLong("duration_ms", 0L),
                 artworkUrl = item.optString("artwork").takeIf { it.startsWith("https://") },
                 source = "Spotify",
+                isPreview = false
+            )
+        }
+    }
+
+    private fun searchDeezer(query: String): List<AudioTrack> {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val data = JSONObject(request("https://api.deezer.com/search?q=$encoded&limit=10"))
+            .optJSONArray("data") ?: JSONArray()
+        return (0 until data.length()).mapNotNull { index ->
+            val item = data.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id").trim()
+            val title = item.optString("title").trim()
+            if (id.isBlank() || title.isBlank()) return@mapNotNull null
+            val artist = item.optJSONObject("artist")?.optString("name").orEmpty()
+                .ifBlank { "Неизвестный исполнитель" }
+            val album = item.optJSONObject("album")
+            AudioTrack(
+                id = (id.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
+                uri = Uri.parse("https://www.deezer.com/track/${Uri.encode(id)}"),
+                title = title,
+                artist = artist,
+                album = album?.optString("title").orEmpty(),
+                duration = item.optLong("duration", 0L) * 1000L,
+                artworkUrl = album?.optString("cover_xl")?.takeIf { it.startsWith("https://") },
+                source = "Deezer",
                 isPreview = false
             )
         }
@@ -222,7 +252,7 @@ internal object NuclearStyleSearch {
     }
 
     fun resolveTrack(track: AudioTrack): AudioTrack {
-        if (track.source != "Spotify") {
+        if (track.source != "Spotify" && track.source != "Deezer") {
             return track.copy(streamUrl = resolve(track), isPreview = false)
         }
         val query = "${track.title} ${track.artist}"
@@ -233,15 +263,17 @@ internal object NuclearStyleSearch {
         }
         val wantedTitle = normalizeForMatch(track.title)
         val wantedArtist = normalizeForMatch(track.artist)
+        val wantedArtistCompact = wantedArtist.replace(" ", "")
         val match = candidates.firstOrNull { candidate ->
             val title = normalizeForMatch(candidate.title)
             val artist = normalizeForMatch(candidate.artist)
-            title == wantedTitle && (
-                artist == wantedArtist ||
-                artist.contains(wantedArtist) ||
-                wantedArtist.contains(artist)
-            )
-        } ?: error("Трек найден в Spotify, но полный аудиопоток не найден в доступных источниках. Превью вместо полной песни не используется.")
+            val titleMatches = title == wantedTitle || title.contains(wantedTitle) || wantedTitle.contains(title)
+            val artistCompact = artist.replace(" ", "")
+            val artistMatches = artist == wantedArtist || artist.contains(wantedArtist) ||
+                wantedArtist.contains(artist) || artistCompact.contains(wantedArtistCompact) ||
+                wantedArtistCompact.contains(artistCompact)
+            titleMatches && artistMatches
+        } ?: error("Трек найден в ${track.source}, но полный аудиопоток не найден в доступных источниках. Превью вместо полной песни не используется.")
         return match.copy(streamUrl = resolve(match), isPreview = false)
     }
 
