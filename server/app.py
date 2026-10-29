@@ -10,9 +10,11 @@ from fastapi import FastAPI, HTTPException, Header, Query
 from pydantic import BaseModel, Field
 import psycopg
 from psycopg.rows import dict_row
+from music_api import router as music_router
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-app = FastAPI(title="VYNIX API", version="1.0.0")
+app = FastAPI(title="VYNIX API", version="1.1.0")
+app.include_router(music_router)
 
 def connect():
     if not DATABASE_URL:
