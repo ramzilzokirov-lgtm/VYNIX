@@ -50,8 +50,14 @@ internal object NuclearStyleSearch {
     fun resolve(track: AudioTrack): String {
         if (track.source == "Deezer") {
             val url = track.uri.toString()
+            // Prefer the official Deezer preview when present. If it is missing, search
+            // Audius for the same recording instead of failing immediately.
             if (track.isPreview && (url.startsWith("https://") || url.startsWith("http://"))) return url
-            error("Для этой песни Deezer не предоставил ссылку на превью.")
+            val fallback = search("${track.title} ${track.artist}")
+                .firstOrNull { it.source == "Audius" && it.title.equals(track.title, ignoreCase = true) }
+                ?: search(track.title).firstOrNull { it.source == "Audius" }
+                ?: error("У Deezer нет превью, а совпадение не найдено в Audius. Попробуй другой трек.")
+            return resolve(fallback)
         }
         if (track.source == "Audius") {
             val trackId = track.uri.lastPathSegment?.takeIf { it.isNotBlank() }
