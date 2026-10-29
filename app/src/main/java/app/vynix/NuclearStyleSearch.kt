@@ -113,7 +113,7 @@ internal object NuclearStyleSearch {
             "Вставь ссылку на плейлист YouTube, SoundCloud или Spotify."
         }
         if (input.contains("open.spotify.com/playlist/") || input.startsWith("spotify:playlist:")) {
-            val id = Regex("""(?:open\\.spotify\\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)""")
+            val id = Regex("""(?:open\.spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)""")
                 .find(input)?.groupValues?.getOrNull(1)
                 ?: error("Не удалось прочитать ссылку на Spotify-плейлист.")
             val payload = JSONObject(request("$API_BASE/v1/spotify/playlist-tracks?playlist_id=${URLEncoder.encode(id, "UTF-8")}"))
