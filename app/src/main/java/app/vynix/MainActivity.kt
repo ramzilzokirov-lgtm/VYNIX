@@ -595,47 +595,24 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Поиск музыки VYNIX", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Deezer · Audius · YouTube", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Spotify · поиск и воспроизведение", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
-        }
-        if (query.trim().length >= 2) {
-            TextButton(
-                onClick = {
-                    val youtubeQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$youtubeQuery"))
-                    try {
-                        context.startActivity(intent)
-                    } catch (_: Exception) {
-                        error = "Не удалось открыть YouTube. Проверь, установлен ли браузер."
-                    }
-                },
-                modifier = Modifier.padding(horizontal = 16.dp)
-            ) {
-                Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = Lilac)
-                Spacer(Modifier.width(8.dp))
-                Text("Искать эту песню на YouTube", color = Lilac)
-            }
         }
         when {
             query.trim().length < 2 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.Search, null, tint = Lilac, modifier = Modifier.size(48.dp)); Spacer(Modifier.height(10.dp))
                     Text("Найди музыку", color = White, fontWeight = FontWeight.SemiBold)
-                    Text("Введи название песни или исполнителя", color = Muted)
-                    Text("Онлайн-поиск; файлы телефона не сканируются", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("Ищи треки в каталоге Spotify", color = Muted)
+                    Text("Воспроизведение запускается через приложение Spotify", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
             results.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(results, key = { it.key }) { track ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable {
-                        // Pass the original catalogue item to the shared playback pipeline.
-                        // playFromLibrary resolves providers once; resolving here as well turns
-                        // a valid Deezer preview into a non-preview Deezer item and breaks playback.
-                        if (playingId != track.id) {
-                            error = null
-                            onPlayTrack(track)
-                        }
+                        error = null
+                        onPlaySpotify(track)
                     }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(model = track.artworkUrl, contentDescription = "Обложка " + track.title, modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp)))
                         Spacer(Modifier.width(12.dp))
@@ -668,7 +645,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
 }
 
 private fun searchMultiSourceTracks(query: String): List<AudioTrack> =
-    NuclearStyleSearch.search(query)
+    SpotifyCatalog.searchTracks(query)
 
 private fun Int.spCompat() = this.sp
 
