@@ -482,7 +482,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Поиск в музыкальных каталогах", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Free To Use · фрагменты Apple Music", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Полные треки · Free To Use и Internet Archive", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
