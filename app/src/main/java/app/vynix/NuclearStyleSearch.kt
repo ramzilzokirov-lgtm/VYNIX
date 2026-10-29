@@ -32,7 +32,6 @@ internal object NuclearStyleSearch {
             } else {
                 Uri.parse("$API_BASE/v1/music/stream/${Uri.encode(id)}")
             }
-            if (source == "Deezer" && previewUrl == null) return@mapNotNull null
             AudioTrack(
                 id = (id.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
                 uri = uri,
@@ -42,7 +41,7 @@ internal object NuclearStyleSearch {
                 duration = (durationSeconds * 1000).toLong(),
                 artworkUrl = artwork,
                 source = source,
-                isPreview = source == "Deezer" || item.optBoolean("is_preview", false)
+                isPreview = (source == "Deezer" && previewUrl != null) || item.optBoolean("is_preview", false)
             )
         }.distinctBy { "${it.title.lowercase()}|${it.artist.lowercase()}" }.take(30)
     }
@@ -53,10 +52,14 @@ internal object NuclearStyleSearch {
             // Prefer the official Deezer preview when present. If it is missing, search
             // Audius for the same recording instead of failing immediately.
             if (track.isPreview && (url.startsWith("https://") || url.startsWith("http://"))) return url
-            val fallback = search("${track.title} ${track.artist}")
-                .firstOrNull { it.source == "Audius" && it.title.equals(track.title, ignoreCase = true) }
-                ?: search(track.title).firstOrNull { it.source == "Audius" }
-                ?: error("У Deezer нет превью, а совпадение не найдено в Audius. Попробуй другой трек.")
+            val candidates = search("${track.title} ${track.artist}").filter { it.source == "Audius" }
+            val exactTitleAndArtist = candidates.firstOrNull {
+                it.title.equals(track.title, ignoreCase = true) &&
+                    it.artist.equals(track.artist, ignoreCase = true)
+            }
+            val exactTitle = candidates.firstOrNull { it.title.equals(track.title, ignoreCase = true) }
+            val fallback = exactTitleAndArtist ?: exactTitle
+                ?: error("У Deezer нет превью, а точное совпадение не найдено в Audius. Попробуй другой трек.")
             return resolve(fallback)
         }
         if (track.source == "Audius") {
