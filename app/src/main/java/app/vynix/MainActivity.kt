@@ -517,18 +517,12 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
             results.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(results, key = { it.key }) { track ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceA).clickable {
-                        if (playingId != track.id) scope.launch {
-                            playingId = track.id; error = null
-                            try {
-                                val stream = withContext(Dispatchers.IO) {
-                                    NuclearStyleSearch.resolve(track)
-                                }
-                                onPlayTrack(track.copy(uri = Uri.parse(stream), isPreview = false))
-                            } catch (e: Exception) {
-                                error = "Не удалось запустить трек: " + (e.message ?: e.javaClass.simpleName).take(220)
-                            } catch (e: LinkageError) {
-                                error = "Ошибка музыкального модуля: " + (e.message ?: e.javaClass.simpleName).take(180)
-                            } finally { playingId = null }
+                        // Pass the original catalogue item to the shared playback pipeline.
+                        // playFromLibrary resolves providers once; resolving here as well turns
+                        // a valid Deezer preview into a non-preview Deezer item and breaks playback.
+                        if (playingId != track.id) {
+                            error = null
+                            onPlayTrack(track)
                         }
                     }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(model = track.artworkUrl, contentDescription = "Обложка " + track.title, modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp)))
