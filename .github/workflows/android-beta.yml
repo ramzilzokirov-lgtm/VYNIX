@@ -5,8 +5,6 @@ on:
     branches: [main]
     paths:
       - 'app/**'
-      - 'scripts/**'
-      - 'README.md'
       - '*.gradle.kts'
       - 'gradle.properties'
       - '.github/workflows/android-beta.yml'
@@ -20,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - name: Checkout VYNIX branding and build scripts
+      - name: Checkout VYNIX source
         uses: actions/checkout@v4
 
       - name: Set up Java
@@ -29,47 +27,39 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools'
           log-accepted-android-sdk-licenses: false
 
-      - name: Install Android build tools
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-
-      - name: Fetch pinned Riff Android engine
+      - name: Build VYNIX from its native source
         env:
-          RIFF_COMMIT: d8a4e0df941801c602cb05f6db025460a5a8d8fb
-        run: |
-          git clone https://github.com/aidentallen/riff-android.git "$RUNNER_TEMP/riff-android"
-          git -C "$RUNNER_TEMP/riff-android" checkout "$RIFF_COMMIT"
-          echo "Using Riff source commit: $(git -C "$RUNNER_TEMP/riff-android" rev-parse HEAD)"
-
-      - name: Apply VYNIX identity and gold-graphite branding
-        run: python3 scripts/rebrand_riff.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/riff-android"
-
-      - name: Build ARM64 VYNIX APK
-        working-directory: ${{ runner.temp }}/riff-android/android
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleDebug
-          APK="app/build/outputs/apk/debug/app-arm64-v8a-debug.apk"
-          test -s "$APK"
-          cp "$APK" app/build/outputs/apk/debug/VYNIX-arm64-v8a.apk
-          cd app/build/outputs/apk/debug
-          sha256sum VYNIX-arm64-v8a.apk > SHA256SUMS.txt
+          APPLE_MUSIC_DEVELOPER_TOKEN: ${{ secrets.APPLE_MUSIC_DEVELOPER_TOKEN }}
+        run: gradle --no-daemon :app:assembleDebug
 
       - name: Run Android lint and unit tests
-        working-directory: ${{ runner.temp }}/riff-android/android
-        run: ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest
+        env:
+          APPLE_MUSIC_DEVELOPER_TOKEN: ${{ secrets.APPLE_MUSIC_DEVELOPER_TOKEN }}
+        run: gradle --no-daemon :app:lintDebug :app:testDebugUnitTest
 
-      - name: Upload installable VYNIX ARM64 APK
+      - name: Generate APK checksum
+        run: |
+          cd app/build/outputs/apk/debug
+          sha256sum app-debug.apk > SHA256SUMS.txt
+          cp app-debug.apk VYNIX-arm64-v8a.apk
+
+      - name: Upload VYNIX APK
         uses: actions/upload-artifact@v4
         with:
-          name: VYNIX-ARM64-APK
+          name: VYNIX-Native-APK
           path: |
-            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/VYNIX-arm64-v8a.apk
-            ${{ runner.temp }}/riff-android/android/app/build/outputs/apk/debug/SHA256SUMS.txt
+            app/build/outputs/apk/debug/VYNIX-arm64-v8a.apk
+            app/build/outputs/apk/debug/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
