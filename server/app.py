@@ -384,7 +384,7 @@ async def music_search(q: str, limit: int = 20):
                 score += 90
             if query_tokens and all(token in artist_norm.split() for token in query_tokens):
                 score += 80
-            if query_tokens and all(token in title_norm.split() for token in title_norm.split()):
+            if query_tokens and all(token in title_norm.split() for token in query_tokens):
                 score += 70
             score += 10 * len(matched)
             results.append((score, {
