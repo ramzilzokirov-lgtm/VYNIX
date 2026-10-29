@@ -89,7 +89,7 @@ internal object SpotifyCatalog {
 internal class SpotifyRemoteController(private val activity: Activity) {
     companion object {
         const val CLIENT_ID = "e9907b95f5bf435e8fb260a3eff6a7e8"
-        const val REDIRECT_URI = "vynix://callback"
+        const val REDIRECT_URI = "https://app.vynix/callback"
     }
 
     private var remote: SpotifyAppRemote? = null
@@ -127,7 +127,18 @@ internal class SpotifyRemoteController(private val activity: Activity) {
             override fun onFailure(throwable: Throwable) {
                 connecting = false
                 pending.clear()
-                onError("Не удалось подключиться к Spotify: ${throwable.message ?: "проверь Spotify и настройки Dashboard"}")
+                val cause = generateSequence(throwable as Throwable?) { it.cause }
+                    .take(4)
+                    .mapNotNull { it.message?.takeIf(String::isNotBlank) }
+                    .distinct()
+                    .joinToString(" → ")
+                onError(
+                    if (cause.isBlank()) {
+                        "Не удалось подключиться к Spotify (${throwable.javaClass.simpleName}). Проверь, что Spotify установлен, открыт и выполнен вход."
+                    } else {
+                        "Не удалось подключиться к Spotify: $cause"
+                    }
+                )
             }
         })
     }
