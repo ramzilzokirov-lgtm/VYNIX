@@ -138,6 +138,79 @@ def health():
     except Exception:
         raise HTTPException(status_code=503, detail="database_unavailable")
 
+
+# Spotify search uses a server-side client secret. Never put the secret in the Android APK.
+SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "e9907b95f5bf435e8fb260a3eff6a7e8")
+SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
+_spotify_token = ""
+_spotify_token_expires_at = 0.0
+
+def get_spotify_access_token():
+    global _spotify_token, _spotify_token_expires_at
+    import time
+    if _spotify_token and time.time() < _spotify_token_expires_at - 30:
+        return _spotify_token
+    if not SPOTIFY_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="spotify_client_secret_not_configured")
+    try:
+        response = httpx.post(
+            "https://accounts.spotify.com/api/token",
+            data={"grant_type": "client_credentials"},
+            auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        _spotify_token = payload["access_token"]
+        _spotify_token_expires_at = time.time() + int(payload.get("expires_in", 3600))
+        return _spotify_token
+    except Exception:
+        raise HTTPException(status_code=502, detail="spotify_auth_unavailable")
+
+@app.get("/v1/spotify/search")
+def spotify_search(q: str = Field(min_length=2, max_length=180)):
+    token = get_spotify_access_token()
+    try:
+        params = {"q": q.strip(), "type": "track", "limit": 5, "market": "from_token"}
+        response = httpx.get("https://api.spotify.com/v1/search", params=params,
+            headers={"Authorization": f"Bearer {token}"}, timeout=10.0)
+        if response.status_code == 401:
+            global _spotify_token, _spotify_token_expires_at
+            _spotify_token, _spotify_token_expires_at = "", 0.0
+            token = get_spotify_access_token()
+            response = httpx.get("https://api.spotify.com/v1/search", params=params,
+                headers={"Authorization": f"Bearer {token}"}, timeout=10.0)
+        if response.status_code == 403:
+            raise HTTPException(status_code=503, detail="spotify_web_api_access_denied")
+        response.raise_for_status()
+        items = response.json().get("tracks", {}).get("items", [])
+        if not items:
+            raise HTTPException(status_code=404, detail="spotify_track_not_found")
+        import re
+        def norm(value):
+            return re.sub(r"[^\\w ]", " ", value.casefold()).strip()
+        wanted_title = norm(q.split(" - ")[0])
+        chosen = items[0]
+        for item in items:
+            title = item.get("name", "")
+            artists = " ".join(a.get("name", "") for a in item.get("artists", []))
+            if norm(title) == wanted_title or (norm(title) in norm(q) and norm(artists) in norm(q)):
+                chosen = item
+                break
+        return {
+            "spotify_uri": chosen.get("uri", ""),
+            "id": chosen.get("id", ""),
+            "title": chosen.get("name", ""),
+            "artist": ", ".join(a.get("name", "") for a in chosen.get("artists", [])),
+            "album": chosen.get("album", {}).get("name", ""),
+            "duration_ms": chosen.get("duration_ms", 0),
+            "artwork": (chosen.get("album", {}).get("images") or [{}])[0].get("url", ""),
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="spotify_search_unavailable")
+
 @app.post("/v1/auth/register")
 def register_account(payload: AccountCredentials):
     username = payload.username.strip().lower()
