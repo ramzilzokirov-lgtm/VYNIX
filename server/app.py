@@ -164,7 +164,24 @@ def get_spotify_access_token():
         _spotify_token = payload["access_token"]
         _spotify_token_expires_at = time.time() + int(payload.get("expires_in", 3600))
         return _spotify_token
-    except Exception:
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        import logging
+        logging.getLogger("vynix.spotify").warning("Spotify token endpoint returned HTTP %s", status)
+        if status in (400, 401, 403):
+            raise HTTPException(status_code=503, detail="spotify_credentials_rejected")
+        if status == 429:
+            raise HTTPException(status_code=503, detail="spotify_auth_rate_limited")
+        raise HTTPException(status_code=502, detail="spotify_auth_upstream_error")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="spotify_auth_timeout")
+    except httpx.HTTPError as exc:
+        import logging
+        logging.getLogger("vynix.spotify").warning("Spotify token network error: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="spotify_auth_unavailable")
+    except Exception as exc:
+        import logging
+        logging.getLogger("vynix.spotify").exception("Unexpected Spotify token error: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="spotify_auth_unavailable")
 
 @app.get("/v1/spotify/search")
@@ -208,7 +225,24 @@ def spotify_search(q: str = Query(min_length=2, max_length=180)):
         }
     except HTTPException:
         raise
-    except Exception:
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="spotify_search_timeout")
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        import logging
+        logging.getLogger("vynix.spotify").warning("Spotify search endpoint returned HTTP %s", status)
+        if status == 429:
+            raise HTTPException(status_code=503, detail="spotify_rate_limited")
+        if status in (401, 403):
+            raise HTTPException(status_code=503, detail="spotify_web_api_access_denied")
+        raise HTTPException(status_code=502, detail="spotify_search_upstream_error")
+    except httpx.HTTPError as exc:
+        import logging
+        logging.getLogger("vynix.spotify").warning("Spotify search network error: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="spotify_search_unavailable")
+    except Exception as exc:
+        import logging
+        logging.getLogger("vynix.spotify").exception("Unexpected Spotify search error: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="spotify_search_unavailable")
 
 @app.post("/v1/auth/register")
@@ -411,7 +445,22 @@ def spotify_search_tracks(q: str = Query(min_length=2, max_length=180), limit: i
         raise
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="spotify_search_timeout")
-    except Exception:
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        import logging
+        logging.getLogger("vynix.spotify").warning("Spotify track search returned HTTP %s", status)
+        if status == 429:
+            raise HTTPException(status_code=503, detail="spotify_rate_limited")
+        if status in (401, 403):
+            raise HTTPException(status_code=503, detail="spotify_web_api_access_denied")
+        raise HTTPException(status_code=502, detail="spotify_search_upstream_error")
+    except httpx.HTTPError as exc:
+        import logging
+        logging.getLogger("vynix.spotify").warning("Spotify track search network error: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="spotify_search_unavailable")
+    except Exception as exc:
+        import logging
+        logging.getLogger("vynix.spotify").exception("Unexpected Spotify track search error: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="spotify_search_unavailable")
 
 
