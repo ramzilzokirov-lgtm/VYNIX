@@ -81,12 +81,17 @@ internal object NuclearStyleSearch {
         val normalized = query.trim()
         require(normalized.length >= 2) { "Введи не менее двух символов." }
 
-        // A provider timeout must not suppress results from other providers.
+        // Search providers independently. Spotify contributes catalogue metadata only;
+        // it never contributes a preview URL or a fabricated playable stream.
         val youtube = runCatching { searchExtractor(ServiceList.YouTube, normalized) }.getOrDefault(emptyList())
         val soundCloud = runCatching { searchExtractor(ServiceList.SoundCloud, normalized) }.getOrDefault(emptyList())
         val audius = runCatching { searchAudius(normalized) }.getOrDefault(emptyList())
+        val playable = youtube + soundCloud + audius
+        val playableKeys = playable.map { matchKey(it.title, it.artist) }.toSet()
+        val spotifySupplement = runCatching { searchSpotify(normalized) }.getOrDefault(emptyList())
+            .filter { matchKey(it.title, it.artist) !in playableKeys }
 
-        val merged = (youtube + soundCloud + audius)
+        val merged = (playable + spotifySupplement)
             .distinctBy { it.uri.toString().lowercase() }
             .take(45)
         if (merged.isEmpty()) {
@@ -94,6 +99,42 @@ internal object NuclearStyleSearch {
         }
         return merged
     }
+
+    private fun searchSpotify(query: String): List<AudioTrack> {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val payload = JSONObject(request("$API_BASE/v1/spotify/search-tracks?q=$encoded&limit=10"))
+        val data = payload.optJSONArray("tracks") ?: JSONArray()
+        return (0 until data.length()).mapNotNull { index ->
+            val item = data.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id").trim()
+            val title = item.optString("title").trim()
+            if (id.isBlank() || title.isBlank()) return@mapNotNull null
+            val artist = item.optString("artist").trim().ifBlank { "Неизвестный исполнитель" }
+            AudioTrack(
+                id = (id.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
+                uri = Uri.parse("https://open.spotify.com/track/${Uri.encode(id)}"),
+                title = title,
+                artist = artist,
+                album = item.optString("album"),
+                duration = item.optLong("duration_ms", 0L),
+                artworkUrl = item.optString("artwork").takeIf { it.startsWith("https://") },
+                source = "Spotify",
+                isPreview = false
+            )
+        }
+    }
+
+    private fun matchKey(title: String, artist: String): String =
+        normalizeForMatch(title) + "|" + normalizeForMatch(artist)
+
+    private fun normalizeForMatch(value: String): String = value
+        .lowercase()
+        .replace(Regex("\\([^)]*(official|audio|video|lyrics|visualizer|remaster|hd|4k)[^)]*\\)"), " ")
+        .replace(Regex("\\[[^]]*(official|audio|video|lyrics|visualizer|remaster|hd|4k)[^]]*]"), " ")
+        .replace(Regex("\\b(official audio|official video|lyrics video|lyric video|audio|video|lyrics|visualizer|remastered|remaster|hd|4k|topic)\\b"), " ")
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .trim()
+        .replace(Regex("\\s+"), " ")
 
     private fun searchExtractor(service: StreamingService, query: String): List<AudioTrack> {
         ensureExtractor()
@@ -173,9 +214,35 @@ internal object NuclearStyleSearch {
         }.getOrDefault(emptyList())
         val youtube = runCatching { searchExtractor(ServiceList.YouTube, "popular music official audio") }
             .getOrDefault(emptyList())
-        val merged = (youtube + audius).distinctBy { it.uri.toString().lowercase() }.take(30)
+        val soundCloud = runCatching { searchExtractor(ServiceList.SoundCloud, "popular music") }
+            .getOrDefault(emptyList())
+        val merged = (youtube + soundCloud + audius).distinctBy { it.uri.toString().lowercase() }.take(30)
         if (merged.isEmpty()) error("Не удалось загрузить популярную музыку. Проверь интернет и повтори попытку.")
         return merged
+    }
+
+    fun resolveTrack(track: AudioTrack): AudioTrack {
+        if (track.source != "Spotify") {
+            return track.copy(streamUrl = resolve(track), isPreview = false)
+        }
+        val query = "${track.title} ${track.artist}"
+        val candidates = buildList {
+            addAll(runCatching { searchExtractor(ServiceList.YouTube, query) }.getOrDefault(emptyList()))
+            addAll(runCatching { searchExtractor(ServiceList.SoundCloud, query) }.getOrDefault(emptyList()))
+            addAll(runCatching { searchAudius(query) }.getOrDefault(emptyList()))
+        }
+        val wantedTitle = normalizeForMatch(track.title)
+        val wantedArtist = normalizeForMatch(track.artist)
+        val match = candidates.firstOrNull { candidate ->
+            val title = normalizeForMatch(candidate.title)
+            val artist = normalizeForMatch(candidate.artist)
+            title == wantedTitle && (
+                artist == wantedArtist ||
+                artist.contains(wantedArtist) ||
+                wantedArtist.contains(artist)
+            )
+        } ?: error("Трек найден в Spotify, но полный аудиопоток не найден в доступных источниках. Превью вместо полной песни не используется.")
+        return match.copy(streamUrl = resolve(match), isPreview = false)
     }
 
     fun resolve(track: AudioTrack): String {
