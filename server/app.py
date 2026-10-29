@@ -6,7 +6,7 @@ import hmac
 import secrets
 import httpx
 from datetime import datetime, timezone, timedelta
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Query
 from pydantic import BaseModel, Field
 import psycopg
 from psycopg.rows import dict_row
@@ -168,10 +168,10 @@ def get_spotify_access_token():
         raise HTTPException(status_code=502, detail="spotify_auth_unavailable")
 
 @app.get("/v1/spotify/search")
-def spotify_search(q: str = Field(min_length=2, max_length=180)):
+def spotify_search(q: str = Query(min_length=2, max_length=180)):
     token = get_spotify_access_token()
     try:
-        params = {"q": q.strip(), "type": "track", "limit": 5, "market": "from_token"}
+        params = {"q": q.strip(), "type": "track", "limit": 5}
         response = httpx.get("https://api.spotify.com/v1/search", params=params,
             headers={"Authorization": f"Bearer {token}"}, timeout=10.0)
         if response.status_code == 401:
