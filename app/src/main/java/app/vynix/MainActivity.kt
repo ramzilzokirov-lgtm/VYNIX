@@ -627,7 +627,7 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
                             Icon(Icons.Rounded.Headphones, "Полная версия в Spotify", tint = Lilac, modifier = Modifier.size(24.dp))
                         }
                         if (playingId == track.id) CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Lilac)
-                        else Icon(Icons.Rounded.PlayCircle, "Воспроизвести здесь", tint = Muted, modifier = Modifier.size(28.dp))
+                        else Icon(Icons.Rounded.PlayCircle, "Воспроизвести в Spotify", tint = Muted, modifier = Modifier.size(28.dp))
                     }
                 }
             }
