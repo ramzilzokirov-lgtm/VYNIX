@@ -52,14 +52,23 @@ internal object NuclearStyleSearch {
             // Prefer the official Deezer preview when present. If it is missing, search
             // Audius for the same recording instead of failing immediately.
             if (track.isPreview && (url.startsWith("https://") || url.startsWith("http://"))) return url
-            val candidates = search("${track.title} ${track.artist}").filter { it.source == "Audius" }
+            // Artist credits often differ between Deezer and Audius, so search by title too.
+            val combinedQuery = search("${track.title} ${track.artist}").filter { it.source == "Audius" }
+            val titleQuery = search(track.title).filter { it.source == "Audius" }
+            val candidates = (combinedQuery + titleQuery).distinctBy { it.uri.toString() }
+            fun normalized(value: String) = value.lowercase().replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim()
+            val wantedTitle = normalized(track.title)
+            val wantedArtist = normalized(track.artist)
             val exactTitleAndArtist = candidates.firstOrNull {
-                it.title.equals(track.title, ignoreCase = true) &&
-                    it.artist.equals(track.artist, ignoreCase = true)
+                normalized(it.title) == wantedTitle && normalized(it.artist) == wantedArtist
             }
-            val exactTitle = candidates.firstOrNull { it.title.equals(track.title, ignoreCase = true) }
-            val fallback = exactTitleAndArtist ?: exactTitle
-                ?: error("У Deezer нет превью, а точное совпадение не найдено в Audius. Попробуй другой трек.")
+            val exactTitle = candidates.firstOrNull { normalized(it.title) == wantedTitle }
+            val closeTitle = candidates.firstOrNull {
+                val candidateTitle = normalized(it.title)
+                candidateTitle.contains(wantedTitle) || wantedTitle.contains(candidateTitle)
+            }
+            val fallback = exactTitleAndArtist ?: exactTitle ?: closeTitle
+                ?: error("У Deezer нет превью, а совпадение не найдено в Audius. Попробуй другой трек.")
             return resolve(fallback)
         }
         if (track.source == "Audius") {
@@ -76,8 +85,8 @@ internal object NuclearStyleSearch {
 
     private fun request(url: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15000
-            readTimeout = 20000
+            connectTimeout = 5000
+            readTimeout = 7000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "VYNIX Android Music Player/0.1")
             setRequestProperty("Accept", "application/json")
