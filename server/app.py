@@ -453,3 +453,89 @@ async def music_stream(track_id: str):
     # copyrighted audio on VYNIX servers or proxy third-party content.
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url=resolved["stream_url"], status_code=307)
+
+
+# Lyrics are fetched from LRCLIB's public API. VYNIX stores no lyric files;
+# the Android client may cache responses locally for offline viewing.
+LRCLIB_API_BASE = "https://lrclib.net/api"
+
+@app.get("/v1/music/lyrics/search")
+async def music_lyrics_search(q: str, limit: int = 10):
+    query = q.strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=400, detail="query_too_short")
+    limit = max(1, min(limit, 20))
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(
+                f"{LRCLIB_API_BASE}/search",
+                params={"q": query},
+                headers={"User-Agent": "VYNIX/0.1 (Android music player)"},
+            )
+            if response.status_code == 404:
+                return {"query": query, "count": 0, "lyrics": []}
+            response.raise_for_status()
+            payload = response.json()
+        lyrics = []
+        if isinstance(payload, list):
+            for item in payload[:limit]:
+                if not isinstance(item, dict):
+                    continue
+                synced = item.get("syncedLyrics")
+                plain = item.get("plainLyrics")
+                lyrics.append({
+                    "id": item.get("id"),
+                    "track_name": item.get("trackName") or "",
+                    "artist_name": item.get("artistName") or "",
+                    "album_name": item.get("albumName") or "",
+                    "duration": item.get("duration"),
+                    "instrumental": bool(item.get("instrumental", False)),
+                    "synced_lyrics": synced if isinstance(synced, str) and synced.strip() else None,
+                    "plain_lyrics": plain if isinstance(plain, str) and plain.strip() else None,
+                    "source": "LRCLIB",
+                })
+        return {"query": query, "count": len(lyrics), "lyrics": lyrics}
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="lyrics_provider_timeout")
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(status_code=502, detail="lyrics_provider_unavailable")
+
+@app.get("/v1/music/lyrics")
+async def music_lyrics(track_name: str, artist_name: str = "", album_name: str = "", duration: int = 0):
+    title = track_name.strip()
+    artist = artist_name.strip()
+    album = album_name.strip()
+    if len(title) < 1:
+        raise HTTPException(status_code=400, detail="track_name_required")
+    if len(title) > 240 or len(artist) > 240 or len(album) > 240:
+        raise HTTPException(status_code=400, detail="metadata_too_long")
+    params = {"track_name": title, "artist_name": artist, "album_name": album}
+    if duration > 0:
+        params["duration"] = min(duration, 86400)
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(
+                f"{LRCLIB_API_BASE}/get",
+                params=params,
+                headers={"User-Agent": "VYNIX/0.1 (Android music player)"},
+            )
+            if response.status_code == 404:
+                return {"found": False, "track_name": title, "artist_name": artist, "source": "LRCLIB"}
+            response.raise_for_status()
+            item = response.json()
+        return {
+            "found": bool(item.get("syncedLyrics") or item.get("plainLyrics")),
+            "id": item.get("id"),
+            "track_name": item.get("trackName") or title,
+            "artist_name": item.get("artistName") or artist,
+            "album_name": item.get("albumName") or album,
+            "duration": item.get("duration"),
+            "instrumental": bool(item.get("instrumental", False)),
+            "synced_lyrics": item.get("syncedLyrics") or None,
+            "plain_lyrics": item.get("plainLyrics") or None,
+            "source": "LRCLIB",
+        }
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="lyrics_provider_timeout")
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(status_code=502, detail="lyrics_provider_unavailable")
