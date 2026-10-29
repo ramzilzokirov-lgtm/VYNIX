@@ -313,6 +313,9 @@ internal object NuclearStyleSearch {
     }
 
     fun resolveTrack(track: AudioTrack): AudioTrack {
+        if (track.uri.scheme == "file" || track.source == "Загружено") {
+            return track.copy(streamUrl = track.uri.toString(), isPreview = false)
+        }
         if (track.source != "Spotify" && track.source != "Deezer") {
             return track.copy(streamUrl = resolve(track), isPreview = false)
         }
