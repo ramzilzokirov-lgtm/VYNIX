@@ -14,6 +14,7 @@ import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -102,6 +103,66 @@ internal object NuclearStyleSearch {
             error("Музыкальные источники временно не вернули результаты. Проверь интернет и повтори поиск.")
         }
         return merged
+    }
+
+    data class ImportedPlaylist(val name: String, val tracks: List<AudioTrack>)
+
+    fun importPlaylist(url: String): ImportedPlaylist {
+        val input = url.trim()
+        require(input.startsWith("https://") || input.startsWith("http://") || input.startsWith("spotify:")) {
+            "Вставь ссылку на плейлист YouTube, SoundCloud или Spotify."
+        }
+        if (input.contains("open.spotify.com/playlist/") || input.startsWith("spotify:playlist:")) {
+            val id = Regex("""(?:open\\.spotify\\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)""")
+                .find(input)?.groupValues?.getOrNull(1)
+                ?: error("Не удалось прочитать ссылку на Spotify-плейлист.")
+            val payload = JSONObject(request("$API_BASE/v1/spotify/playlist-tracks?playlist_id=${URLEncoder.encode(id, "UTF-8")}"))
+            val array = payload.optJSONArray("tracks") ?: JSONArray()
+            val imported = (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                val trackId = item.optString("id").trim()
+                val title = item.optString("title").trim()
+                if (trackId.isBlank() || title.isBlank()) return@mapNotNull null
+                AudioTrack(
+                    id = (trackId.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
+                    uri = Uri.parse("https://open.spotify.com/track/${Uri.encode(trackId)}"),
+                    title = title,
+                    artist = item.optString("artist").ifBlank { "Неизвестный исполнитель" },
+                    album = item.optString("album"),
+                    duration = item.optLong("duration_ms", 0L),
+                    artworkUrl = item.optString("artwork").takeIf { it.startsWith("https://") },
+                    source = "Spotify",
+                    isPreview = false
+                )
+            }
+            if (imported.isEmpty()) error("В плейлисте нет доступных треков.")
+            return ImportedPlaylist(payload.optString("name").ifBlank { "Spotify playlist" }, imported)
+        }
+
+        ensureExtractor()
+        val service = when {
+            input.contains("youtube.com/", true) || input.contains("youtu.be/", true) -> ServiceList.YouTube
+            input.contains("soundcloud.com/", true) -> ServiceList.SoundCloud
+            else -> error("Импорт поддерживает ссылки на публичные плейлисты Spotify, YouTube и SoundCloud.")
+        }
+        val info = PlaylistInfo.getInfo(service.getPlaylistExtractor(input))
+        val imported = info.relatedItems.filterIsInstance<StreamInfoItem>()
+            .filter { it.url.isNotBlank() && it.name.isNotBlank() && it.duration > 0 }
+            .map { item ->
+                AudioTrack(
+                    id = (item.url.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
+                    uri = Uri.parse(item.url),
+                    title = item.name,
+                    artist = item.uploaderName?.takeIf { it.isNotBlank() } ?: "Неизвестный исполнитель",
+                    album = service.serviceInfo.name,
+                    duration = item.duration * 1000L,
+                    artworkUrl = item.thumbnails.firstOrNull()?.url,
+                    source = service.serviceInfo.name,
+                    isPreview = false
+                )
+            }
+        if (imported.isEmpty()) error("В плейлисте не удалось найти доступные полные треки.")
+        return ImportedPlaylist(info.name.ifBlank { service.serviceInfo.name }, imported)
     }
 
     private fun searchSpotify(query: String): List<AudioTrack> {
