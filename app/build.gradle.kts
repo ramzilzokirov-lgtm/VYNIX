@@ -15,8 +15,8 @@ android {
         buildConfigField("String", "APPLE_MUSIC_DEVELOPER_TOKEN", "\"${appleMusicDeveloperToken}\"")
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0.0-alpha"
+        versionCode = 6
+        versionName = "0.1.0-beta3"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
