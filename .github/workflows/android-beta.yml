@@ -58,7 +58,14 @@ jobs:
 
       - name: Print Spotify Android application fingerprint
         run: |
-          keytool -list -v -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android -keypass android | grep -E 'SHA1:|SHA256:'
+          set -euo pipefail
+          KEYSTORE="$HOME/.android/debug.keystore"
+          if [ ! -f "$KEYSTORE" ]; then
+            echo "::error::Android debug keystore was not created by the build. Cannot print Spotify application fingerprint."
+            exit 1
+          fi
+          keytool -list -v -alias androiddebugkey -keystore "$KEYSTORE" -storepass android -keypass android > "$RUNNER_TEMP/vynix-keystore.txt"
+          grep -E 'SHA1:|SHA256:' "$RUNNER_TEMP/vynix-keystore.txt"
           echo "Spotify Dashboard package name: app.vynix"
 
       - name: Run Android lint and unit tests
