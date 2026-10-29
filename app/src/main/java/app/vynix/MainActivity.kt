@@ -118,6 +118,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var knownTracks by remember { mutableStateOf<Map<String, AudioTrack>>(emptyMap()) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     var searchingOnline by remember { mutableStateOf(false) }
+    var downloadingKeys by remember { mutableStateOf(setOf<String>()) }
     var favorites by remember { mutableStateOf(setOf<String>()) }
     var recent by remember { mutableStateOf(listOf<String>()) }
     var playlists by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
@@ -333,6 +334,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     }
 
     val filtered = when {
+        tab == "Загрузки" -> knownTracks.values.filter { it.source == "Загружено" }
         tab == "Избранное" -> knownTracks.values.filter { it.key in favorites }
         tab == "Недавние" -> recent.mapNotNull { key -> knownTracks[key] }
         tab == "Плейлисты" && selectedPlaylist != null -> (playlists[selectedPlaylist] ?: emptyList()).mapNotNull { key -> knownTracks[key] }
@@ -405,14 +407,34 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                                 saveState()
                             },
                             onPlayTrack = { track ->
-                                // Keep the resolved stream URL; looking up the original result here
-                                // discarded it and caused the stream resolver to run a second time.
                                 knownTracks = knownTracks + (track.key to track)
                                 saveState()
                                 playFromLibrary(listOf(track), 0)
+                            },
+                            downloadingKeys = downloadingKeys,
+                            onDownloadTrack = { track ->
+                                if (track.key !in downloadingKeys) {
+                                    downloadingKeys = downloadingKeys + track.key
+                                    playbackError = null
+                                    playbackScope.launch {
+                                        try {
+                                            val downloaded = withContext(Dispatchers.IO) {
+                                                VynixOfflineDownloads.download(context, track)
+                                            }
+                                            knownTracks = knownTracks + (downloaded.key to downloaded)
+                                            saveState()
+                                            playbackError = "Сохранено офлайн: ${track.title}"
+                                        } catch (e: Exception) {
+                                            playbackError = "Не удалось скачать трек: ${(e.message ?: "источник недоступен").take(150)}"
+                                        } finally {
+                                            downloadingKeys = downloadingKeys - track.key
+                                        }
+                                    }
+                                }
                             }
                         )
                     }
+                    tab == "Загрузки" -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Загрузки")
                     tab == "Избранное" -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Избранное")
                     tab == "Недавние" -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = "Недавно слушали")
                     tab == "Плейлисты" && selectedPlaylist != null -> TrackList(filtered, favorites, ::playFromLibrary, onFavorite = { t -> favorites = if (t.key in favorites) favorites - t.key else favorites + t.key; saveState() }, onAdd = { addTarget = it }, title = selectedPlaylist ?: "Плейлист", onBack = { selectedPlaylist = null; tab = "Медиатека" })
@@ -633,7 +655,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
 
 
 @Composable
-private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -> Unit, onPlayTrack: (AudioTrack) -> Unit) {
+private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -> Unit, onPlayTrack: (AudioTrack) -> Unit, downloadingKeys: Set<String>, onDownloadTrack: (AudioTrack) -> Unit) {
     var results by remember { mutableStateOf<List<AudioTrack>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -696,6 +718,10 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
                             Text(track.source, color = Lilac, style = MaterialTheme.typography.labelSmall)
                             if (track.duration > 0L) Text(formatPlayerTime(track.duration), color = Muted, style = MaterialTheme.typography.labelSmall)
                         }
+                        IconButton(onClick = { onDownloadTrack(track) }, enabled = track.key !in downloadingKeys) {
+                            if (track.key in downloadingKeys) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
+                            else Icon(Icons.Rounded.Download, "Скачать для офлайн", tint = Lilac, modifier = Modifier.size(22.dp))
+                        }
                         IconButton(onClick = { playingId = track.id; onPlayTrack(track) }) {
                             Icon(Icons.Rounded.Headphones, "Слушать в VYNIX", tint = Lilac, modifier = Modifier.size(24.dp))
                         }
@@ -752,6 +778,7 @@ private fun HomeScreen(favorites: Int, recent: Int, onOpen: (String) -> Unit, on
         
         item { FeatureRow("Плейлисты", "Собери музыку под настроение", Icons.Rounded.QueueMusic) { onOpen("Медиатека") } }
         item { FeatureRow("Онлайн-поиск", "Ищи музыку в музыкальных сервисах", Icons.Rounded.Search) { onOpen("Поиск") } }
+        item { FeatureRow("Загрузки", "Слушай сохранённую музыку без интернета", Icons.Rounded.Download) { onOpen("Загрузки") } }
     }
 }
 
