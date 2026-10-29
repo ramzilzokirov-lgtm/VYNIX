@@ -642,7 +642,7 @@ private fun FullPlayer(title: String, artist: String, artworkUrl: String?, isPre
     var dragging by remember { mutableFloatStateOf(-1f) }
     androidx.activity.compose.BackHandler(onBack = onClose)
     androidx.compose.ui.window.Dialog(onDismissRequest = onClose, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             val backdrop = Modifier.fillMaxSize()
             if (artworkUrl != null) AsyncImage(model = artworkUrl, contentDescription = null, modifier = backdrop, contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xCC49305F), Color(0xF2100E17)))))
