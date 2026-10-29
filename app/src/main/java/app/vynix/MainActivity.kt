@@ -245,6 +245,10 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
     var currentArtist by remember { mutableStateOf("Твоя музыка начинается здесь") }
     var currentArtwork by remember { mutableStateOf<String?>(null) }
     var currentIsPreview by remember { mutableStateOf(false) }
+    var currentLyrics by remember { mutableStateOf<VynixLyricsRepository.Lyrics?>(null) }
+    var lyricsLoading by remember { mutableStateOf(false) }
+    var lyricsError by remember { mutableStateOf<String?>(null) }
+    var lyricsDialogOpen by remember { mutableStateOf(false) }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var fullPlayerOpen by remember { mutableStateOf(false) }
@@ -257,6 +261,8 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                 currentArtist = mediaItem?.mediaMetadata?.artist?.toString() ?: "Твоя музыка начинается здесь"
                 currentArtwork = mediaItem?.mediaMetadata?.artworkUri?.toString()
                 currentIsPreview = (mediaItem?.localConfiguration?.tag as? AudioTrack)?.isPreview == true
+                currentLyrics = null
+                lyricsError = null
                 position = 0L
                 duration = c?.duration?.coerceAtLeast(0L) ?: 0L
                 val key = mediaItem?.mediaId
@@ -448,7 +454,56 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
             onToggle = { if (isPlaying) currentPlayer.pause() else currentPlayer.play() },
             onPrevious = { currentPlayer.seekToPreviousMediaItem() },
             onNext = { currentPlayer.seekToNextMediaItem() },
-            onSeek = { currentPlayer.seekTo(it) }
+            onSeek = { currentPlayer.seekTo(it) },
+            lyricsLoading = lyricsLoading,
+            onLyrics = {
+                if (!lyricsLoading) {
+                    lyricsLoading = true
+                    lyricsError = null
+                    playbackScope.launch {
+                        try {
+                            val result = withContext(Dispatchers.IO) {
+                                VynixLyricsRepository.find(currentTitle, currentArtist, durationMs = duration)
+                            }
+                            currentLyrics = result
+                            if (result == null) lyricsError = "Текст для этой записи не найден."
+                            else lyricsDialogOpen = true
+                        } catch (e: Exception) {
+                            lyricsError = e.message ?: "Не удалось загрузить текст песни."
+                        } finally { lyricsLoading = false }
+                    }
+                }
+            }
+        )
+    }
+    if (lyricsDialogOpen && currentLyrics != null) {
+        val lyrics = currentLyrics!!
+        AlertDialog(
+            onDismissRequest = { lyricsDialogOpen = false },
+            containerColor = SurfaceA,
+            title = { Text("${lyrics.title} · текст песни", color = White, fontWeight = FontWeight.Bold) },
+            text = {
+                val lines = remember(lyrics.syncedLrc, lyrics.plainText) {
+                    if (!lyrics.syncedLrc.isNullOrBlank()) VynixLyricsRepository.timedLines(lyrics.syncedLrc)
+                    else emptyList()
+                }
+                Column(Modifier.heightIn(max = 480.dp)) {
+                    Text(lyrics.artist, color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.foundation.rememberScrollState().let { scroll ->
+                        Column(Modifier.fillMaxWidth().verticalScroll(scroll)) {
+                            Text(
+                                if (lines.isNotEmpty()) lines.joinToString("\\n") { line -> "[${formatPlayerTime(line.timestampMs)}] ${line.text}" }
+                                else lyrics.plainText ?: "Инструментальная композиция или текст отсутствует.",
+                                color = White,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                    Text("Источник: ${lyrics.source}", color = Muted, style = MaterialTheme.typography.labelSmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { lyricsDialogOpen = false }) { Text("Закрыть") } }
         )
     }
 }
@@ -681,7 +736,7 @@ private fun MiniPlayer(title: String, artist: String, artworkUrl: String?, playi
 }
 
 @Composable
-private fun FullPlayer(title: String, artist: String, artworkUrl: String?, isPreview: Boolean, playing: Boolean, position: Long, duration: Long, onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit) {
+private fun FullPlayer(title: String, artist: String, artworkUrl: String?, isPreview: Boolean, playing: Boolean, position: Long, duration: Long, onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Long) -> Unit, lyricsLoading: Boolean, onLyrics: () -> Unit) {
     var dragging by remember { mutableFloatStateOf(-1f) }
     androidx.activity.compose.BackHandler(onBack = onClose)
     androidx.compose.ui.window.Dialog(onDismissRequest = onClose, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
@@ -701,6 +756,13 @@ private fun FullPlayer(title: String, artist: String, artworkUrl: String?, isPre
                 Text(title, color = White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(6.dp))
                 Text(artist, color = Muted, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(10.dp))
+                TextButton(onClick = onLyrics) {
+                    if (lyricsLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Lilac)
+                    else Icon(Icons.Rounded.Lyrics, contentDescription = null, tint = Lilac)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (lyricsLoading) "Загружаю текст…" else "Текст песни", color = Lilac)
+                }
             }
             Column(Modifier.fillMaxWidth()) {
                 Slider(value = if (dragging >= 0f) dragging else if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f, onValueChange = { dragging = it }, onValueChangeFinished = { if (duration > 0) onSeek((dragging * duration).toLong()); dragging = -1f }, colors = SliderDefaults.colors(thumbColor = Lilac, activeTrackColor = Lilac, inactiveTrackColor = Muted.copy(alpha = .35f)))
