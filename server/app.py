@@ -393,7 +393,9 @@ def sync_library(user_id: str, payload: LibrarySync):
 @app.get("/v1/music/search")
 def spotify_search_tracks(q: str = Query(min_length=2, max_length=180), limit: int = Query(default=20, ge=1, le=30)):
     token = get_spotify_access_token()
-    params = {"q": q.strip(), "type": "track", "limit": min(limit, 30)}
+    # Spotify currently accepts at most 10 results per item type.
+    # Keep accepting larger client limits for compatibility, but clamp upstream requests.
+    params = {"q": q.strip(), "type": "track", "limit": min(limit, 10)}
     try:
         response = httpx.get(
             "https://api.spotify.com/v1/search",
