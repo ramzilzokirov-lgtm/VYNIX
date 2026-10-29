@@ -43,7 +43,7 @@ internal object SpotifyCatalog {
 internal class SpotifyRemoteController(private val activity: Activity) {
     companion object {
         const val CLIENT_ID = "e9907b95f5bf435e8fb260a3eff6a7e8"
-        const val REDIRECT_URI = "https://app.vynix/callback"
+        const val REDIRECT_URI = "vynix://callback"
     }
 
     private var remote: SpotifyAppRemote? = null
