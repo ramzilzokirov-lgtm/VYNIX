@@ -292,6 +292,70 @@ async def music_search(q: str, limit: int = 20):
     if len(query) < 2:
         raise HTTPException(status_code=400, detail="query_too_short")
     limit = max(1, min(limit, 30))
+
+    def normalize(value: str) -> str:
+        import re
+        return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+
+    normalized_query = normalize(query)
+    query_tokens = [token for token in normalized_query.split() if len(token) > 1]
+    results = []
+    errors = []
+
+    # Deezer is a broad metadata catalogue. Its preview URL is not represented
+    # as a full-track stream; playback remains subject to the source's rights.
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(
+                "https://api.deezer.com/search/track",
+                params={"q": query, "limit": min(100, limit * 3)},
+                headers={"Accept": "application/json", "User-Agent": "VYNIX/0.1"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+        for track in payload.get("data", []):
+            track_id = str(track.get("id", "")).strip()
+            title = str(track.get("title", "")).strip()
+            if not track_id or not title:
+                continue
+            artist_obj = track.get("artist") or {}
+            album_obj = track.get("album") or {}
+            artist = str(artist_obj.get("name") or "Unknown artist").strip()
+            title_norm = normalize(title)
+            artist_norm = normalize(artist)
+            combined = f"{title_norm} {artist_norm}".strip()
+            matched = [token for token in query_tokens if token in combined.split()]
+            if query_tokens and not matched:
+                continue
+            score = 0
+            if normalized_query and normalized_query in artist_norm:
+                score += 100
+            if normalized_query and normalized_query in title_norm:
+                score += 90
+            if query_tokens and all(token in artist_norm.split() for token in query_tokens):
+                score += 80
+            if query_tokens and all(token in title_norm.split() for token in query_tokens):
+                score += 70
+            score += 10 * len(matched)
+            preview = str(track.get("preview") or "").strip()
+            results.append((score, {
+                "id": f"deezer:{track_id}",
+                "provider_id": track_id,
+                "title": title,
+                "artist": artist,
+                "album": str(album_obj.get("title") or ""),
+                "artwork": (album_obj.get("cover_medium") or album_obj.get("cover") or None),
+                "duration_seconds": track.get("duration"),
+                "source": "Deezer",
+                "preview_url": preview or None,
+                "permalink": track.get("link"),
+                "is_preview": True,
+                "playback_note": "Deezer API provides a short preview here, not a guaranteed full track.",
+            }))
+    except (httpx.HTTPError, ValueError) as exc:
+        errors.append("deezer_unavailable")
+
+    # Audius remains the full-track stream provider when a track is available there.
     try:
         async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
             response = await client.get(
@@ -300,58 +364,64 @@ async def music_search(q: str, limit: int = 20):
             )
             response.raise_for_status()
             payload = response.json()
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="music_provider_timeout")
+        for track in payload.get("data", []):
+            track_id = str(track.get("id", "")).strip()
+            title = str(track.get("title", "")).strip()
+            if not track_id or not title:
+                continue
+            user = track.get("user") or {}
+            artist = str(user.get("name") or "Unknown artist").strip()
+            title_norm = normalize(title)
+            artist_norm = normalize(artist)
+            combined = f"{title_norm} {artist_norm}".strip()
+            matched = [token for token in query_tokens if token in combined.split()]
+            if query_tokens and not matched:
+                continue
+            score = 0
+            if normalized_query and normalized_query in artist_norm:
+                score += 100
+            if normalized_query and normalized_query in title_norm:
+                score += 90
+            if query_tokens and all(token in artist_norm.split() for token in query_tokens):
+                score += 80
+            if query_tokens and all(token in title_norm.split() for token in title_norm.split()):
+                score += 70
+            score += 10 * len(matched)
+            results.append((score, {
+                "id": track_id,
+                "provider_id": track_id,
+                "title": title,
+                "artist": artist,
+                "album": "",
+                "artwork": (track.get("artwork") or {}).get("150x150"),
+                "duration_seconds": track.get("duration"),
+                "source": "Audius",
+                "preview_url": None,
+                "permalink": track.get("permalink"),
+                "stream_url": f"/v1/music/stream/{track_id}",
+                "is_preview": False,
+            }))
     except (httpx.HTTPError, ValueError):
-        raise HTTPException(status_code=502, detail="music_provider_unavailable")
+        errors.append("audius_unavailable")
 
-    def normalize(value: str) -> str:
-        import re
-        return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
-
-    normalized_query = normalize(query)
-    query_tokens = [token for token in normalized_query.split() if len(token) > 1]
-    scored = []
-    seen = set()
-    for track in payload.get("data", []):
-        track_id = str(track.get("id", "")).strip()
-        title = str(track.get("title", "")).strip()
-        if not track_id or not title or track_id in seen:
-            continue
-        user = track.get("user") or {}
-        artist = str(user.get("name") or "Unknown artist").strip()
-        title_norm = normalize(title)
-        artist_norm = normalize(artist)
-        combined = f"{title_norm} {artist_norm}".strip()
-        # Drop broad provider matches that do not contain any meaningful query term.
-        # A short second token such as the "G" in "Alex G" is not treated as a keyword.
-        matched = [token for token in query_tokens if token in combined.split()]
-        if query_tokens and not matched:
-            continue
-        score = 0
-        if normalized_query and normalized_query in artist_norm:
-            score += 100
-        if normalized_query and normalized_query in title_norm:
-            score += 90
-        if query_tokens and all(token in artist_norm.split() for token in query_tokens):
-            score += 80
-        if query_tokens and all(token in title_norm.split() for token in query_tokens):
-            score += 70
-        score += 10 * len(matched)
-        seen.add(track_id)
-        scored.append((score, {
-            "id": track_id,
-            "title": title,
-            "artist": artist,
-            "artwork": (track.get("artwork") or {}).get("150x150"),
-            "duration_seconds": track.get("duration"),
-            "source": "Audius",
-            "stream_url": f"/v1/music/stream/{track_id}",
-            "permalink": track.get("permalink"),
-        }))
-    scored.sort(key=lambda item: item[0], reverse=True)
-    results = [item[1] for item in scored[:limit]]
-    return {"query": query, "source": "Audius", "count": len(results), "tracks": results}
+    # Deduplicate by normalized title and artist; prefer Audius for playback
+    # when the same recording exists on both providers.
+    deduped = {}
+    for score, item in results:
+        key = (normalize(item["title"]), normalize(item["artist"]))
+        previous = deduped.get(key)
+        playback_bonus = 5 if item["source"] == "Audius" else 0
+        if previous is None or score + playback_bonus > previous[0] + (5 if previous[1]["source"] == "Audius" else 0):
+            deduped[key] = (score, item)
+    ranked = sorted(deduped.values(), key=lambda pair: (pair[0], pair[1]["source"] == "Audius"), reverse=True)
+    return {
+        "query": query,
+        "source": "Deezer+Audius",
+        "count": len(ranked[:limit]),
+        "providers": ["Deezer", "Audius"],
+        "provider_errors": errors,
+        "tracks": [item for _, item in ranked[:limit]],
+    }
 
 @app.get("/v1/music/resolve/{track_id}")
 async def music_resolve(track_id: str):
