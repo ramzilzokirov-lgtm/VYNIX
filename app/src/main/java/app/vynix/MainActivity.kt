@@ -1,6 +1,7 @@
 package app.vynix
 
 import android.net.Uri
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -482,9 +483,27 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Поиск музыки VYNIX", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Полные треки · каталог Audius", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Deezer · Audius · YouTube", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
+        }
+        if (query.trim().length >= 2) {
+            TextButton(
+                onClick = {
+                    val youtubeQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$youtubeQuery"))
+                    try {
+                        context.startActivity(intent)
+                    } catch (_: Exception) {
+                        error = "Не удалось открыть YouTube. Проверь, установлен ли браузер."
+                    }
+                },
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
+                Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = Lilac)
+                Spacer(Modifier.width(8.dp))
+                Text("Искать эту песню на YouTube", color = Lilac)
+            }
         }
         when {
             query.trim().length < 2 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
