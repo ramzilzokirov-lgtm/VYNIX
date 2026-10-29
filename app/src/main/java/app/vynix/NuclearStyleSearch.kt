@@ -17,13 +17,7 @@ internal object NuclearStyleSearch {
     fun search(query: String): List<AudioTrack> {
         val normalized = query.trim()
         require(normalized.length >= 2) { "Введи не менее двух символов." }
-
-        // Both sources below provide full-length streams, not short previews.
-        val freeTracks = runCatching { searchFreeToUse(normalized) }.getOrDefault(emptyList())
-        if (freeTracks.isNotEmpty()) return freeTracks
-        val archiveTracks = runCatching { searchInternetArchive(normalized) }.getOrDefault(emptyList())
-        if (archiveTracks.isNotEmpty()) return archiveTracks
-        return emptyList()
+        return searchFreeToUse(normalized)
     }
 
     private fun searchFreeToUse(query: String): List<AudioTrack> {
@@ -55,48 +49,9 @@ internal object NuclearStyleSearch {
         }.distinctBy { it.uri.toString() }.take(30)
     }
 
-    private fun searchInternetArchive(query: String): List<AudioTrack> {
-        val encodedQuery = URLEncoder.encode("mediatype:audio AND ($query)", "UTF-8")
-        val root = JSONObject(request("https://archive.org/advancedsearch.php?q=$encodedQuery&fl[]=identifier,title,creator&rows=12&page=1&output=json"))
-        val docs = root.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
-        val results = mutableListOf<AudioTrack>()
-        for (i in 0 until docs.length()) {
-            val doc = docs.optJSONObject(i) ?: continue
-            val identifier = doc.optString("identifier").trim()
-            if (identifier.isBlank()) continue
-            val metadata = runCatching {
-                JSONObject(request("https://archive.org/metadata/${URLEncoder.encode(identifier, "UTF-8")}"))
-            }.getOrNull() ?: continue
-            val files = metadata.optJSONObject("files") ?: continue
-            var audioUrl: String? = null
-            var durationMs = 0L
-            for (j in 0 until files.length()) {
-                val file = files.optJSONObject(files.names().optString(j)) ?: continue
-                val name = file.optString("name")
-                val format = file.optString("format").lowercase()
-                if (file.optString("source") == "original" &&
-                    (format.contains("mp3") || format.contains("mpeg") || format.contains("ogg vorbis") || name.endsWith(".mp3", true) || name.endsWith(".ogg", true))) {
-                    audioUrl = "https://archive.org/download/${Uri.encode(identifier)}/${Uri.encode(name)}"
-                    durationMs = (file.optString("length").toDoubleOrNull()?.times(1000))?.toLong() ?: 0L
-                    break
-                }
-            }
-            val stream = audioUrl ?: continue
-            results += AudioTrack(
-                id = (identifier.hashCode().toLong() and 0x7fffffffL).coerceAtLeast(1L),
-                uri = Uri.parse(stream), title = doc.optString("title").ifBlank { identifier },
-                artist = doc.opt("creator")?.let { if (it is JSONArray) (0 until it.length()).joinToString(", ") { n -> it.optString(n) } else it.toString() } ?: "Internet Archive",
-                album = "Internet Archive", duration = durationMs, artworkUrl = null,
-                source = "Internet Archive", isPreview = false
-            )
-            if (results.size >= 20) break
-        }
-        return results
-    }
-
     fun resolve(track: AudioTrack): String {
         val url = track.uri.toString()
-        if (url.startsWith("https://") && (track.source == "Free To Use" || track.source == "Internet Archive")) return url
+        if (track.source == "Free To Use" && url.startsWith("https://")) return url
         error("Ссылка на аудио недоступна. Повтори поиск.")
     }
 
