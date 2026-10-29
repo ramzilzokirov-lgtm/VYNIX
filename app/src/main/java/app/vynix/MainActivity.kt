@@ -477,6 +477,36 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
             }
         )
     }
+    if (lyricsError != null && !lyricsDialogOpen && !lyricsLoading) {
+        AlertDialog(
+            onDismissRequest = { lyricsError = null },
+            containerColor = SurfaceA,
+            title = { Text("Текст песни недоступен", color = White, fontWeight = FontWeight.Bold) },
+            text = { Text(lyricsError ?: "Не удалось загрузить текст.", color = Muted) },
+            confirmButton = {
+                TextButton(onClick = { lyricsError = null }) { Text("Понятно") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    lyricsError = null
+                    lyricsLoading = true
+                    playbackScope.launch {
+                        try {
+                            val result = withContext(Dispatchers.IO) {
+                                VynixLyricsRepository.find(currentTitle, currentArtist, durationMs = duration)
+                            }
+                            currentLyrics = result
+                            if (result == null) lyricsError = "Текст для этой записи не найден."
+                            else lyricsDialogOpen = true
+                        } catch (e: Exception) {
+                            lyricsError = e.message ?: "Не удалось загрузить текст песни."
+                        } finally { lyricsLoading = false }
+                    }
+                }) { Text("Повторить") }
+            }
+        )
+    }
+
     if (lyricsDialogOpen && currentLyrics != null) {
         val lyrics = currentLyrics!!
         AlertDialog(
@@ -494,7 +524,7 @@ private fun VynixApp(onPlay: (List<AudioTrack>, Int) -> Unit, player: () -> Medi
                     androidx.compose.foundation.rememberScrollState().let { scroll ->
                         Column(Modifier.fillMaxWidth().verticalScroll(scroll)) {
                             Text(
-                                if (lines.isNotEmpty()) lines.joinToString("\\n") { line -> "[${formatPlayerTime(line.timestampMs)}] ${line.text}" }
+                                if (lines.isNotEmpty()) lines.joinToString("\n") { line -> "[${formatPlayerTime(line.timestampMs)}] ${line.text}" }
                                 else lyrics.plainText ?: "Инструментальная композиция или текст отсутствует.",
                                 color = White,
                                 style = MaterialTheme.typography.bodyMedium
