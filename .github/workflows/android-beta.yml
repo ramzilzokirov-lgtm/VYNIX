@@ -26,14 +26,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
-          key: vynix-spotify-debug-keystore-v1
-
-      - name: Download official Spotify App Remote SDK
-        run: |
-          mkdir -p app/libs
-          curl --fail --location --retry 3 --retry-delay 2 \
-            https://raw.githubusercontent.com/spotify/android-sdk/master/app-remote-lib/spotify-app-remote-release-0.8.0.aar \
-            --output app/libs/spotify-app-remote-release-0.8.0.aar
+          key: vynix-debug-keystore-v1
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -69,17 +62,17 @@ jobs:
           APPLE_MUSIC_DEVELOPER_TOKEN: ${{ secrets.APPLE_MUSIC_DEVELOPER_TOKEN }}
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Print Spotify Android application fingerprint
+      - name: Print Android application fingerprint
         run: |
           set -euo pipefail
           KEYSTORE="$HOME/.android/debug.keystore"
           if [ ! -f "$KEYSTORE" ]; then
-            echo "::error::Android debug keystore was not created by the build. Cannot print Spotify application fingerprint."
+            echo "::error::Android debug keystore was not created by the build. Cannot print Android application fingerprint."
             exit 1
           fi
           keytool -list -v -alias androiddebugkey -keystore "$KEYSTORE" -storepass android -keypass android > "$RUNNER_TEMP/vynix-keystore.txt"
           grep -E 'SHA1:|SHA256:' "$RUNNER_TEMP/vynix-keystore.txt"
-          echo "Spotify Dashboard package name: app.vynix"
+          echo "Android package name: app.vynix"
 
       - name: Run Android lint and unit tests
         env:
