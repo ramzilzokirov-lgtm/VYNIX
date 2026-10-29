@@ -10,11 +10,9 @@ from fastapi import FastAPI, HTTPException, Header, Query
 from pydantic import BaseModel, Field
 import psycopg
 from psycopg.rows import dict_row
-from music_api import router as music_router
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-app = FastAPI(title="VYNIX API", version="1.1.0")
-app.include_router(music_router)
+app = FastAPI(title="VYNIX API", version="1.2.0")
 
 def connect():
     if not DATABASE_URL:
@@ -551,91 +549,6 @@ def spotify_playlist_tracks(playlist_id: str = Query(min_length=10, max_length=6
         raise HTTPException(status_code=502, detail="spotify_playlist_upstream_error")
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="spotify_playlist_unavailable")
-
-
-# Public no-login playback catalog. Spotify provides discovery metadata only;
-# Audius supplies playable tracks through its public API.
-AUDIUS_API_BASE = "https://api.audius.co/v1"
-AUDIUS_APP_NAME = os.environ.get("AUDIUS_APP_NAME", "VYNIX")
-
-def audius_request(path: str, params: dict | None = None):
-    query = dict(params or {})
-    query.setdefault("app_name", AUDIUS_APP_NAME)
-    try:
-        response = httpx.get(f"{AUDIUS_API_BASE}{path}", params=query, timeout=12.0, follow_redirects=True)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise HTTPException(status_code=502, detail="audius_invalid_response")
-        return payload
-    except HTTPException:
-        raise
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="audius_timeout")
-    except httpx.HTTPStatusError as exc:
-        import logging
-        logging.getLogger("vynix.audius").warning("Audius returned HTTP %s for %s", exc.response.status_code, path)
-        raise HTTPException(status_code=502, detail="audius_catalog_unavailable")
-    except (httpx.HTTPError, ValueError):
-        raise HTTPException(status_code=502, detail="audius_catalog_unavailable")
-
-@app.get("/v1/music/search")
-def music_search(q: str = Query(min_length=2, max_length=180), limit: int = Query(default=20, ge=1, le=30)):
-    query = q.strip()
-    safe_limit = min(limit, 30)
-    # Audius supports popularity sorting. Merge popular and relevance-ranked
-    # searches so well-known matches aren't buried by low-play-count uploads.
-    result_sets = []
-    for sort_method in ("popular", "relevant"):
-        try:
-            payload = audius_request("/tracks/search", {
-                "query": query,
-                "limit": safe_limit,
-                "sort_method": sort_method,
-            })
-            result_sets.extend(payload.get("data") or [])
-        except HTTPException:
-            if not result_sets:
-                raise
-
-    tracks = []
-    seen_ids = set()
-    for item in result_sets:
-        if not isinstance(item, dict):
-            continue
-        track_id = str(item.get("id") or "").strip()
-        title = str(item.get("title") or "").strip()
-        if not track_id or not title or track_id in seen_ids:
-            continue
-        seen_ids.add(track_id)
-        user = item.get("user") or {}
-        artwork = item.get("artwork") or {}
-        artwork_url = next((str(artwork.get(size)) for size in ("480x480", "1000x1000", "150x150") if artwork.get(size)), "")
-        try:
-            duration_seconds = max(0, int(float(item.get("duration") or 0)))
-        except (ValueError, TypeError):
-            duration_seconds = 0
-        tracks.append({
-            "id": track_id, "title": title,
-            "artist": str(user.get("name") or item.get("artist_name") or "Неизвестный исполнитель"),
-            "album": str(item.get("album") or "Audius"),
-            "duration_seconds": duration_seconds,
-            "artwork": artwork_url, "source": "Audius", "is_preview": False,
-            "permalink": str(item.get("permalink") or ""),
-        })
-        if len(tracks) >= safe_limit:
-            break
-    return {"query": query, "source": "Audius", "providers": ["Audius"], "count": len(tracks), "tracks": tracks}
-
-@app.get("/v1/music/resolve/{track_id}")
-def music_resolve(track_id: str):
-    safe_id = track_id.strip()
-    if not safe_id or len(safe_id) > 180 or "/" in safe_id:
-        raise HTTPException(status_code=400, detail="invalid_track_id")
-    # Media3 follows Audius' official redirect to the playable stream.
-    from urllib.parse import urlencode
-    stream_url = f"{AUDIUS_API_BASE}/tracks/{safe_id}/stream?{urlencode({'app_name': AUDIUS_APP_NAME})}"
-    return {"id": safe_id, "stream_url": stream_url, "source": "Audius"}
 
 
 # Lyrics are fetched from LRCLIB's public API. VYNIX stores no lyric files;
