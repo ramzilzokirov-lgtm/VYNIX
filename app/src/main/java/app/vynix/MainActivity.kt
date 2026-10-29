@@ -470,9 +470,9 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
         try {
             results = withContext(Dispatchers.IO) { searchMultiSourceTracks(q) }
             onResultsChange(results)
-            if (results.isEmpty()) error = "Free To Use не вернул результаты. Попробуй другой запрос."
+            if (results.isEmpty()) error = "Ничего не найдено в доступных каталогах. Попробуй другое название."
         } catch (e: Exception) {
-            error = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось выполнить поиск в Free To Use."
+            error = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось подключиться к музыкальным каталогам. Проверь интернет и повтори поиск."
             results = emptyList()
             onResultsChange(emptyList())
         } finally { loading = false }
@@ -481,8 +481,8 @@ private fun OpenAudioSearch(query: String, onResultsChange: (List<AudioTrack>) -
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.GraphicEq, null, tint = Lilac, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Поиск в Free To Use", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Единый музыкальный каталог", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Поиск в музыкальных каталогах", color = White, fontWeight = FontWeight.SemiBold)
+                Text("Free To Use · фрагменты Apple Music", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Lilac)
         }
